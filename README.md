@@ -1,15 +1,40 @@
-# Basic Sample Hardhat Project
+# Voxies Contracts
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, a sample script that deploys that contract, and an example of a task implementation, which simply lists the available accounts.
+<img alt="Solidity" src="https://img.shields.io/badge/Solidity-e6e6e6?style=for-the-badge&logo=solidity&logoColor=black" /> <img alt="Solidity" src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
 
-Try running some of the following tasks:
+## Overview
 
-```shell
-npx hardhat accounts
-npx hardhat compile
-npx hardhat clean
-npx hardhat test
-npx hardhat node
-node scripts/sample-script.js
-npx hardhat help
+This repository contains the solidity smart contracts for Shoefy.
+
+## Prerequisites
+
+-   git
+-   node | npm
+
+## Getting started
+
+-   Clone the repository
+
+```sh
+git clone https://github.com/nonceblox/voxies-contracts
+```
+
+-   Navigate to `voxies-contracts` directory
+
+```sh
+cd voxies-contracts
+```
+
+-   Install dependencies
+
+```sh
+npm i
+```
+
+## Run tasks
+
+-   test
+
+```sh
+npm test
 ```
