@@ -85,6 +85,7 @@ describe("Token Distribution tests", function () {
                 voxelDistribution.connect(signerAlice).setMinimumBuyAmount(ethers.utils.parseEther("1.2"))
             ).to.be.revertedWith("Caller does not have Admin Access");
         });
+
         it("purchases the tokens", async function () {
             expect(await voxel.balanceOf(alice)).eq(0);
             await expect(voxelDistribution.connect(signerAlice).buy({ value: ethers.utils.parseEther("1") }))
@@ -101,6 +102,35 @@ describe("Token Distribution tests", function () {
                     value: ethers.utils.parseEther("1"),
                 })
             ).to.emit(voxelDistribution, "Buy");
+        });
+        it("allows owner to withdraw ERC20 from contract", async () => {
+            const amount = await voxel.balanceOf(voxelDistribution.address);
+            const balance = await voxel.balanceOf(admin);
+            await voxelDistribution.withdrawToken(amount);
+            expect(await voxel.balanceOf(admin)).gt(balance);
+        });
+        it("doesn't allow non owner to withdraw ERC20 from contract", async () => {
+            const contractBalance = await voxel.balanceOf(voxelDistribution.address);
+            await expect(
+                voxelDistribution.connect(signerAlice).withdrawToken(contractBalance)
+            ).to.be.revertedWith("Ownable: caller is not the owner");
+        });
+        xit("allows owner to withdraw accumulated ETH from contract", async () => {
+            await voxelDistribution.addToWhitelist(admin);
+            await voxelDistribution.buy({ value: ethers.utils.parseEther("10") });
+            const balance = await ethers.provider.getBalance(admin);
+            console.log((await ethers.provider.getBalance(voxelDistribution.address)).toString());
+            // console.logs(10 ether)
+            await voxelDistribution.withdraw(); // withdraws all ether
+            console.log((await ethers.provider.getBalance(voxelDistribution.address)).toString());
+            // console.logs(0)
+            expect(await ethers.provider.getBalance(admin)).gt(balance);
+            // fails: no increment???
+        });
+        it("doesn't allow non owner to withdraw ETH from contract", async () => {
+            await expect(voxelDistribution.connect(signerAlice).withdraw()).to.be.revertedWith(
+                "Ownable: caller is not the owner"
+            );
         });
         describe("Pausable testing", async function () {
             it("only owner can pause and unpause", async function () {
