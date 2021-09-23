@@ -9,10 +9,7 @@ import { ERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 // @todo: soft cap? hard cap?
 
 contract VoxelDistribution is Whitelist, Pausable {
-    // @yash: should we have a minimum buy amount?
-    uint256 public constant MINIMUM_BUY_AMOUNT = 1 ether;
-
-    // @yash: hardhad coded, actual value tbd
+    uint256 public minimumBuyAmount = 1 ether;
     uint256 public price = 1e16; // 1 matic = 100 tokens
     IERC20 public token;
 
@@ -27,7 +24,7 @@ contract VoxelDistribution is Whitelist, Pausable {
      * @notice buy the token
      */
     function buy() public payable onlyWhitelist whenNotPaused {
-        require(msg.value >= MINIMUM_BUY_AMOUNT, "amount should be greater than minimum requirement");
+        require(msg.value >= minimumBuyAmount, "amount should be greater than minimum requirement");
         uint256 tokensToSend = (msg.value * 1e18) / price;
         token.transfer(msg.sender, tokensToSend);
         emit Buy(msg.sender, msg.value);
@@ -40,6 +37,14 @@ contract VoxelDistribution is Whitelist, Pausable {
 
     /**
      * @notice Set price
+     * Only admin
+     */
+    function setMinimumBuyAmount(uint256 _minAmount) external onlyAdmin {
+        minimumBuyAmount = _minAmount;
+    }
+
+    /**
+     * @notice Set min buy amount
      * Only admin
      */
     function setPrice(uint256 _price) external onlyAdmin {

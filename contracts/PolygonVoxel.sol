@@ -2,9 +2,9 @@
 pragma solidity ^0.8.0;
 
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import { AccessProtected } from "./utils/AccessProtected.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract PolygonVoxel is AccessProtected, ERC20("Voxel Token", "VXL") {
+contract PolygonVoxel is Ownable, ERC20("Voxel Token", "VXL") {
     address private _childChainManagerProxy;
 
     constructor(address childChainManagerProxy_) {
@@ -21,7 +21,7 @@ contract PolygonVoxel is AccessProtected, ERC20("Voxel Token", "VXL") {
         _burn(_msgSender(), _amount);
     }
 
-    function updateChildChainManagerProxy(address _newAddr) external onlyAdmin {
+    function updateChildChainManagerProxy(address _newAddr) external onlyOwner {
         _childChainManagerProxy = _newAddr;
     }
 }
