@@ -21,7 +21,7 @@ describe("Token Distribution tests", function () {
         bob = await signerBob.getAddress();
         voxel = await VoxelFactory.deploy();
         voxelDistribution = await VoxelDistributionFactory.deploy(voxel.address);
-        await voxel.mint(voxelDistribution.address, ethers.utils.parseEther("1000"));
+        await voxel.transfer(voxelDistribution.address, ethers.utils.parseEther("1000"));
     });
     describe("Deployment tests", function () {
         it("correctly sets IERC20 voxel", async function () {
@@ -73,6 +73,16 @@ describe("Token Distribution tests", function () {
         it("throws if non admin tries to set price", async () => {
             await expect(
                 voxelDistribution.connect(signerAlice).setPrice(ethers.utils.parseEther("1"))
+            ).to.be.revertedWith("Caller does not have Admin Access");
+        });
+        it("allows admin to set min buy amount", async () => {
+            expect(await voxelDistribution.minimumBuyAmount()).eq(ethers.utils.parseEther("1"));
+            await voxelDistribution.setMinimumBuyAmount(ethers.utils.parseEther("0.01"));
+            expect(await voxelDistribution.minimumBuyAmount()).eq(ethers.utils.parseEther("0.01"));
+        });
+        it("throws if non admin tries to set min buy amount", async () => {
+            await expect(
+                voxelDistribution.connect(signerAlice).setMinimumBuyAmount(ethers.utils.parseEther("1.2"))
             ).to.be.revertedWith("Caller does not have Admin Access");
         });
         it("purchases the tokens", async function () {
