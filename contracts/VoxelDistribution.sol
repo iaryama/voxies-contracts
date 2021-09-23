@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.4;
 import { Whitelist } from "./utils/Whitelist.sol";
 import { Pausable } from "@openzeppelin/contracts/security/Pausable.sol";
 import { ERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -57,6 +57,14 @@ contract VoxelDistribution is Whitelist, Pausable {
      */
     function withdraw() external onlyOwner {
         payable(owner()).transfer(address(this).balance);
+    }
+
+    /**
+     * @notice withdraw accumulated IERC20 tokens in this contract
+     * Can only be called by the current owner.
+     */
+    function withdrawToken(uint256 _amount) external onlyOwner {
+        token.transfer(owner(), _amount);
     }
 
     /**
