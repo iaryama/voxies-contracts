@@ -1,25 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import { ERC20Burnable, ERC20 } from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { AccessProtected } from "./utils/AccessProtected.sol";
 
-contract PolygonVoxel is AccessProtected, ERC20Burnable {
-    event Bridge(address indexed user, uint256 amount);
+contract PolygonVoxel is AccessProtected, ERC20("Voxel Token", "VXL") {
+    address private _childChainManagerProxy;
 
-    constructor() ERC20("Voxel Token", "VXL") {}
-
-    function mint(address _to, uint256 _amount) external onlyAdmin {
-        _mint(_to, _amount);
+    constructor(address childChainManagerProxy_) {
+        _childChainManagerProxy = childChainManagerProxy_;
     }
 
-    /**
-     * Bridge
-     * Only admin
-     * @dev listen for `Bridge` event and `mint` on other side
-     */
-    function bridge(uint256 _amount) external {
-        burn(_amount);
-        emit Bridge(_msgSender(), _amount);
+    function deposit(address _to, bytes calldata _data) external {
+        require(_msgSender() == _childChainManagerProxy, "caller != childChainManagerProxy");
+        uint256 amount = abi.decode(_data, (uint256));
+        _mint(_to, amount);
+    }
+
+    function withdraw(uint256 _amount) external {
+        _burn(_msgSender(), _amount);
+    }
+
+    function updateChildChainManagerProxy(address _newAddr) external onlyAdmin {
+        _childChainManagerProxy = _newAddr;
     }
 }
