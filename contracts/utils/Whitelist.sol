@@ -14,7 +14,7 @@ contract Whitelist is AccessProtected {
     }
 
     function removeFromWhitelist(address _investor) external onlyAdmin {
-        require(whitelisted[_investor], "no such investor");
+        require(whitelisted[_investor], "investor not in whitelist");
         whitelisted[_investor] = false;
         emit WhitelistRemoved(_investor);
     }
