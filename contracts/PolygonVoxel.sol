@@ -18,7 +18,7 @@ contract PolygonVoxel is AccessProtected, ERC20Burnable {
      * Only admin
      * @dev listen for `Bridge` event and `mint` on other side
      */
-    function bridge(uint256 _amount) external onlyAdmin {
+    function bridge(uint256 _amount) external {
         burn(_amount);
         emit Bridge(_msgSender(), _amount);
     }
