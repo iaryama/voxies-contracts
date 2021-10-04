@@ -4,7 +4,7 @@
 
 ## Overview
 
-This repository contains the solidity smart contracts for Shoefy.
+This repository contains the solidity smart contracts for project-voxies
 
 ## Prerequisites
 
