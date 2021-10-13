@@ -6,7 +6,8 @@
     "scripts": {
         "test": "hardhat test",
         "prepare": "husky install",
-        "coverage": "hardhat coverage"
+        "coverage": "hardhat coverage",
+        "postinstall": "hardhat compile --force"
     },
     "repository": {
         "type": "git",
