@@ -3,12 +3,14 @@ pragma solidity 0.8.4;
 import { Whitelist } from "./utils/Whitelist.sol";
 import { Pausable } from "@openzeppelin/contracts/security/Pausable.sol";
 import { ERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 // @todo: owners cut?
 // @todo: multiple rounds?
 // @todo: soft cap? hard cap?
 
 contract VoxelDistribution is Whitelist, Pausable {
+    using SafeERC20 for IERC20;
     uint256 public minimumBuyAmount = 1 ether;
     uint256 public price = 1e16; // 1 matic = 100 tokens
     IERC20 public token;
@@ -26,7 +28,7 @@ contract VoxelDistribution is Whitelist, Pausable {
     function buy() public payable onlyWhitelist whenNotPaused {
         require(msg.value >= minimumBuyAmount, "amount should be greater than minimum requirement");
         uint256 tokensToSend = (msg.value * 1e18) / price;
-        token.transfer(msg.sender, tokensToSend);
+        token.safeTransfer(msg.sender, tokensToSend);
         emit Buy(msg.sender, msg.value);
     }
 
@@ -64,7 +66,7 @@ contract VoxelDistribution is Whitelist, Pausable {
      * Can only be called by the current owner.
      */
     function withdrawToken(uint256 _amount) external onlyOwner {
-        token.transfer(owner(), _amount);
+        token.safeTransfer(owner(), _amount);
     }
 
     /**

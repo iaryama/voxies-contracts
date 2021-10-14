@@ -5,19 +5,22 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import { IERC165 } from "@openzeppelin/contracts/interfaces/IERC165.sol";
+import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract Rewards is Ownable {
+contract Rewards is Ownable, IERC721Receiver {
     event RewardedERC20(address indexed token, address[] indexed winners, uint256[] amounts);
     event RewardedNFT(address indexed nft, address[] indexed winners, uint256[] amounts);
     event DepositedERC20(address indexed depositor, address indexed token, uint256 amount);
     event DepositedNFT(address indexed depositor, address indexed nft, uint256[] tokenIds);
     event WithdrawnERC20(address indexed token, address indexed caller, uint256 amount);
     event WithdrawnNFT(address indexed nft, address indexed caller, uint256[] tokenIds);
+    using SafeERC20 for IERC20;
 
     function depositERC20(address _token, uint256 _amount) external onlyOwner {
         require(_amount > 0, "amount == 0");
 
-        IERC20(_token).transferFrom(msg.sender, address(this), _amount);
+        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
 
         emit DepositedERC20(msg.sender, _token, _amount);
     }
@@ -28,7 +31,7 @@ contract Rewards is Ownable {
 
         for (uint256 i = 0; i < len; i++) {
             uint256 tokenId = _tokenIds[i];
-            IERC721(_nft).transferFrom(msg.sender, address(this), tokenId);
+            IERC721(_nft).safeTransferFrom(msg.sender, address(this), tokenId);
         }
 
         emit DepositedNFT(msg.sender, _nft, _tokenIds);
@@ -59,7 +62,7 @@ contract Rewards is Ownable {
         for (uint256 i = 0; i < len; i++) {
             address winner = _winners[i];
             uint256 tokenId = _tokenIds[i];
-            IERC721(_token).transferFrom(address(this), winner, tokenId);
+            IERC721(_token).safeTransferFrom(address(this), winner, tokenId);
         }
         emit RewardedNFT(address(_token), _winners, _tokenIds);
     }
@@ -82,7 +85,16 @@ contract Rewards is Ownable {
         require(len > 0, "tokenIds length == 0");
         for (uint256 i = 0; i < len; i++) {
             uint256 tokenId = _tokenIds[i];
-            IERC721(_token).transferFrom(address(this), owner(), tokenId);
+            IERC721(_token).safeTransferFrom(address(this), owner(), tokenId);
         }
+    }
+
+    function onERC721Received(
+        address operator,
+        address from,
+        uint256 tokenId,
+        bytes calldata data
+    ) external override returns (bytes4) {
+        return this.onERC721Received.selector;
     }
 }
