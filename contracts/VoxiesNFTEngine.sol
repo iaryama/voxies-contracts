@@ -5,37 +5,14 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "./utils/AccessProtected.sol";
 
-contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, Ownable {
+contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
     mapping(string => uint8) public hashes;
-    mapping(address => bool) private _admins;
-
-    event AdminAccessSet(address _admin, bool _enabled);
 
     constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) {}
-
-    /**
-     * Set Admin Access
-     *
-     * @param admin - Address of Minter
-     * @param enabled - Enable/Disable Admin Access
-     */
-    function setAdmin(address admin, bool enabled) external onlyOwner {
-        _admins[admin] = enabled;
-        emit AdminAccessSet(admin, enabled);
-    }
-
-    /**
-     * Check Admin Access
-     *
-     * @param admin - Address of Admin
-     * @return whether minter has access
-     */
-    function isAdmin(address admin) public view returns (bool) {
-        return _admins[admin];
-    }
 
     /**
      * Mint + Issue NFT
@@ -101,7 +78,7 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, Ownable {
      *
      * @param tokenId - NFT Id to Burn
      */
-    function burn(uint256 tokenId) external returns (uint256[] memory) {
+    function burn(uint256 tokenId) external {
         _burn(tokenId);
     }
 
@@ -133,13 +110,5 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, Ownable {
 
     function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
         super._burn(tokenId);
-    }
-
-    /**
-     * Throws if called by any account other than the Admin.
-     */
-    modifier onlyAdmin() {
-        require(_admins[msg.sender] || msg.sender == owner(), "Caller does not have Admin Access");
-        _;
     }
 }
