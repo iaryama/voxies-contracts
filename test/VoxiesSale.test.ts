@@ -15,7 +15,6 @@ describe("NFTSale Test", async () => {
         vox: VoxiesNFTEngine,
         nftsale: NFTSale__factory,
         nft: NFTSale;
-
     beforeEach(async () => {
         voxelEngine = await ethers.getContractFactory("VoxiesNFTEngine");
         vox = await voxelEngine.deploy("VoxelNFT", "VOX");
@@ -87,7 +86,7 @@ describe("NFTSale Test", async () => {
             var saleResult = await nft.sellNFT(nftId, price, await accounts3.getAddress());
             await expect(saleResult).to.emit(nft, "SaleAdded");
             const nftOwner = await vox.ownerOf(1);
-            expect(nftOwner).to.be.equal(nft.address);
+            await expect(nftOwner).to.be.equal(nft.address);
         });
         it("should be able to get sale using NFT ID", async () => {
             const nftId = 1;
@@ -97,10 +96,10 @@ describe("NFTSale Test", async () => {
             var saleResult = await nft.sellNFT(nftId, price, await accounts3.getAddress());
             await expect(saleResult).to.emit(nft, "SaleAdded");
             const nftOwner = await vox.ownerOf(1);
-            expect(nftOwner).to.be.equal(nft.address);
+            await expect(nftOwner).to.be.equal(nft.address);
             const sale = await nft.getSale(nftId);
-            expect(sale[0]).to.be.equal(await accounts3.getAddress());
-            expect(sale[1]).to.be.equal(1000000000000000000n);
+            await expect(sale[0]).to.be.equal(await accounts3.getAddress());
+            await expect(sale[1]).to.be.equal(1000000000000000000n);
         });
         it("should not be able to purchase if contract is inactive", async () => {
             const nftId = 1;
@@ -110,7 +109,7 @@ describe("NFTSale Test", async () => {
             var saleResult = await nft.sellNFT(nftId, price, await accounts3.getAddress());
             await expect(saleResult).to.emit(nft, "SaleAdded");
             const nftOwner = await vox.ownerOf(1);
-            expect(nftOwner).to.be.equal(nft.address);
+            await expect(nftOwner).to.be.equal(nft.address);
             const buyer = await accounts2.getAddress();
             const sale = await nft.connect(buyer).getSale(nftId);
             const pricee = sale[1];
@@ -136,7 +135,7 @@ describe("NFTSale Test", async () => {
                 .purchaseNFT(nftId, { value: pricee.toString() });
             const newNftOwner = await vox.ownerOf(nftId);
             await expect(purchaseResult).to.emit(nft, "Sold");
-            expect(newNftOwner).to.be.equal(buyer);
+            await expect(newNftOwner).to.be.equal(buyer);
         });
         it("owner be able to release", async () => {
             const nftId = 2;
@@ -151,7 +150,7 @@ describe("NFTSale Test", async () => {
             await expect(purchaseResult).to.emit(nft, "Sold");
 
             const nftOwner = await vox.ownerOf(nftId);
-            expect(nftOwner).to.be.equal(buyer);
+            await expect(nftOwner).to.be.equal(buyer);
         });
         it("owner should be able to cancel sale", async () => {
             const nftId = 3;
@@ -159,14 +158,98 @@ describe("NFTSale Test", async () => {
             const nftOwner = await accounts3.getAddress();
             var approvalResult = await vox.approve(nft.address, nftId);
             await expect(approvalResult).to.emit(vox, "Approval");
-            var saleResult = await nft.sellNFT(nftId, price, nftOwner);
-            await expect(saleResult).to.emit(nft, "SaleAdded");
+            await expect(nft.sellNFT(nftId, price, await accounts3.getAddress())).to.emit(nft, "SaleAdded");
             const newNftOwner = await vox.ownerOf(nftId);
-            expect(newNftOwner).to.be.equal(nft.address);
+            await expect(newNftOwner).to.be.equal(nft.address);
             var cancelledResult = await nft.cancelSale(nftId);
             await expect(cancelledResult).to.emit(nft, "SaleCancelled");
             const originalNftOwner = await vox.ownerOf(nftId);
-            expect(originalNftOwner).to.be.equal(await owner.getAddress());
+            await expect(originalNftOwner).to.be.equal(await owner.getAddress());
+        });
+        it("user should be able to sell NFT minted to him by Admin. Buyer should be able to buy from user", async () => {
+            const hash_04 = "some-hash-044";
+            const nftId = 4;
+            const data_04 = {
+                name: "Random Name (1969)",
+                image: "some-image-url",
+                user: "Frank Frazetta",
+            };
+            const seller = await accounts2.getAddress();
+            const buyer = await accounts3.getAddress();
+            const price = 1000000000000000000n;
+            await vox.issueToken(seller, hash_04, JSON.stringify(data_04));
+            await nft.setContractStatus(true);
+            var approvalResult = await vox.connect(accounts2).approve(nft.address, nftId);
+            await expect(approvalResult).to.emit(vox, "Approval");
+            var saleResult = await nft.connect(accounts2).sellMyNFT(nftId, price);
+            await expect(saleResult).to.emit(nft, "SaleAdded");
+            const sale = await nft.connect(accounts2).getSale(nftId);
+            const pricee = sale[1];
+            var purchaseResult = await nft
+                .connect(accounts3)
+                .purchaseNFT(nftId, { value: pricee.toString() });
+            const newNftOwner = await vox.ownerOf(nftId);
+            await expect(purchaseResult).to.emit(nft, "Sold");
+            await expect(newNftOwner).to.be.equal(buyer);
+        });
+        it("admin should be able to put a batch of NFTs for sale and buyer should be able to buy them", async () => {
+            const nftIds = [];
+            const hashes = [];
+            const URIs = [];
+            const iterations = 8;
+            const recepient = await owner.getAddress();
+            const prices = [];
+            for (var i = 1; i <= iterations; i++) {
+                const hash = `ipfs-hash-user1-${i}`;
+                const data = `ipfs-uri-user1-${i}`;
+                hashes.push(hash);
+                URIs.push(data);
+                prices.push(1000000000000000000n);
+                nftIds.push(i);
+            }
+            await vox.issueBatch(recepient, hashes, URIs);
+            await nft.setContractStatus(true);
+            var approvalResult = await vox.setApprovalForAll(nft.address, true);
+            await expect(approvalResult).to.emit(vox, "ApprovalForAll");
+            var saleResult = await nft.sellNFTBatch(nftIds, prices, recepient);
+            await expect(saleResult).to.emit(nft, "SaleAdded");
+            const totalPrice = prices.reduce((a, b) => a + b);
+            var purchaseResult = await nft
+                .connect(accounts2)
+                .purchaseNFTBatch(nftIds, { value: totalPrice.toString() });
+            await expect(purchaseResult).to.emit(nft, "Sold");
+            for (var i = 1; i <= iterations; i++) {
+                await expect(nft.getSale(nftIds[i])).to.be.reverted;
+            }
+        });
+        it("mint nfts to user and users should be able to put a batch of NFTs for sale and buyer should be able to buy them", async () => {
+            const hashes = [];
+            const URIs = [];
+            const iterations = 8;
+            const ownerOfNFTs = await accounts2.getAddress();
+            const prices = [];
+            for (var i = 1; i <= iterations; i++) {
+                const hash = `ipfs-hash-user2-${i}`;
+                const data = `ipfs-uri-user2-${i}`;
+                hashes.push(hash);
+                URIs.push(data);
+                prices.push(1000000000000000000n);
+            }
+            const nftIds = await vox.callStatic.issueBatch(ownerOfNFTs, hashes, URIs);
+            await vox.issueBatch(ownerOfNFTs, hashes, URIs);
+            await nft.setContractStatus(true);
+            var approvalResult = await vox.connect(accounts2).setApprovalForAll(nft.address, true);
+            await expect(approvalResult).to.emit(vox, "ApprovalForAll");
+            var saleResult = await nft.connect(accounts2).sellMyNFTBatch(nftIds, prices);
+            await expect(saleResult).to.emit(nft, "SaleAdded");
+            const totalPrice = prices.reduce((a, b) => a + b);
+            var purchaseResult = await nft
+                .connect(accounts3)
+                .purchaseNFTBatch(nftIds, { value: totalPrice.toString() });
+            await expect(purchaseResult).to.emit(nft, "Sold");
+            for (var i = 1; i <= iterations; i++) {
+                await expect(nft.getSale(nftIds[i])).to.be.reverted;
+            }
         });
     });
 });
