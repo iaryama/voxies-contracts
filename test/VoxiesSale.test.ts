@@ -223,12 +223,6 @@ describe("NFTSale Test", async () => {
             }
         });
         it("mint nfts to user and users should be able to put a batch of NFTs for sale and buyer should be able to buy them", async () => {
-            voxelEngine = await ethers.getContractFactory("VoxiesNFTEngine");
-            vox = await voxelEngine.deploy("VoxelNFT", "VOX");
-            [owner, accounts1, accounts2, accounts3] = await ethers.getSigners();
-            nftsale = await ethers.getContractFactory("NFTSale");
-            nft = await nftsale.deploy(vox.address);
-            const nftIds = [];
             const hashes = [];
             const URIs = [];
             const iterations = 8;
@@ -240,8 +234,8 @@ describe("NFTSale Test", async () => {
                 hashes.push(hash);
                 URIs.push(data);
                 prices.push(1000000000000000000n);
-                nftIds.push(i);
             }
+            const nftIds = await vox.callStatic.issueBatch(ownerOfNFTs, hashes, URIs);
             await vox.issueBatch(ownerOfNFTs, hashes, URIs);
             await nft.setContractStatus(true);
             var approvalResult = await vox.connect(accounts2).setApprovalForAll(nft.address, true);

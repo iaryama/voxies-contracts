@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, Ownable {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
-    mapping(string => uint8) hashes;
+    mapping(string => uint8) public hashes;
     mapping(address => bool) private _admins;
 
     event AdminAccessSet(address _admin, bool _enabled);
@@ -94,6 +94,15 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, Ownable {
             result[index] = tokenOfOwnerByIndex(holder, index);
         }
         return result;
+    }
+
+    /**
+     * Burn NFT
+     *
+     * @param tokenId - NFT Id to Burn
+     */
+    function burn(uint256 tokenId) external returns (uint256[] memory) {
+        _burn(tokenId);
     }
 
     function _beforeTokenTransfer(

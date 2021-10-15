@@ -73,7 +73,7 @@ describe("VoxiesNFTEngine Test", async () => {
             const recepient = await accounts2.getAddress();
             const hash = "some-hash";
             const data = "some-uri";
-            const nftId = 1;
+            const nftId = await vox.callStatic.issueToken(nftOwner, hash, data);
             await vox.issueToken(nftOwner, hash, data);
             await expect(vox.connect(accounts1).transferFrom(nftOwner, recepient, nftId)).to.emit(
                 vox,
@@ -101,7 +101,7 @@ describe("VoxiesNFTEngine Test", async () => {
             const approved = await vox.getApproved(nftId);
             expect(approved).to.be.equal(user);
         });
-        it("approved should be able to transfer NFT", async () => {
+        it("approved should be able to transfer and burn NFT", async () => {
             const nftOwner = await accounts2.getAddress();
             const approved = await accounts3.getAddress();
             const recepient = await accounts3.getAddress();
@@ -109,7 +109,7 @@ describe("VoxiesNFTEngine Test", async () => {
             const data = "some-uri";
             const hashh = "some-hashh";
             const dataa = "some-urii";
-            const nftId = 1;
+            const nftId = await vox.callStatic.issueToken(nftOwner, hash, data);
             await vox.issueToken(nftOwner, hash, data);
             await vox.issueToken(approved, hashh, dataa);
             await vox.connect(accounts2).setApprovalForAll(approved, true);
@@ -117,8 +117,17 @@ describe("VoxiesNFTEngine Test", async () => {
                 vox,
                 "Transfer"
             );
-            const newOwner = await vox.ownerOf(1);
+            const newOwner = await vox.ownerOf(nftId);
             expect(newOwner).to.be.equal(recepient);
+            console.log(
+                "Tokens held By User Before Burn ",
+                (await vox.getHolderTokenIds(await accounts3.getAddress())).toString()
+            );
+            await vox.connect(accounts3).burn(nftId);
+            console.log(
+                "Tokens held By User After Burn ",
+                (await vox.getHolderTokenIds(await accounts3.getAddress())).toString()
+            );
         });
     });
 });
