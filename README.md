@@ -15,36 +15,30 @@ This repository contains the solidity smart contracts for project-voxies
 
 -   Clone the repository
 
-```sh
+```
 git clone https://github.com/nonceblox/voxies-contracts
 ```
 
 -   Navigate to `voxies-contracts` directory
 
-```sh
+```
 cd voxies-contracts
 ```
 
 -   Install dependencies
 
-```sh
+```
 npm i
 ```
 
 ### Configure project
-**Environment Configuration**
-- Copy `.example.env` to `.env`
-```sh
-cp .example.env .env
-```
 
-**Private Key Configuration**
-- Configure environment variables in `.env`
+**Environment Configuration**
+
+-   Copy `.example.env` to `.env`
+
 ```
-DEPLOYER_PRIVATE_KEY=<private-key>
-EXPLORER_API_KEY=<api-key>
-NFT_ENGINE_ADDRESS=<address-VoxiesNFTEnine.sol>
-VOXEL_ADDRESS=<address-Voxel.sol>
+cp .example.env .env
 ```
 
 ## Run tasks
@@ -56,19 +50,13 @@ npm test
 ```
 
 ### Deploy to Testnet
+
 ```sh
-npx hardhat run --network <your-network> scripts/deploy.js
+npx hardhat run --network <your-network> scripts/<deployment-file>
 ```
+
 ## Verify smart contracts
-### on Mumbai Testnet
+
 ```sh
-npx hardhat verify --network mumbai DEPLOYED_CONTRACT_ADDRESS "Constructor argument 1"
+npx hardhat verify --network <network-name-in-hardhat-config> DEPLOYED_CONTRACT_ADDRESS "Constructor arguments"
 ```
-
-### on Polygon Mainnet
-```sh
-npx hardhat verify --network polygon DEPLOYED_CONTRACT_ADDRESS "Constructor argument 1"
-```
-
-
-
