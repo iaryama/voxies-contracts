@@ -1,14 +1,12 @@
 import { ethers } from "hardhat";
+import dotenv from "dotenv";
+dotenv.config();
 
 async function deploy() {
-    const Voxel = await ethers.getContractFactory("Voxel");
-    const voxel = await Voxel.deploy();
-    await voxel.deployed();
     const VoxelDistribution = await ethers.getContractFactory("VoxelDistribution");
-    const voxelDistribution = await VoxelDistribution.deploy(voxel.address);
+    const voxelDistribution = await VoxelDistribution.deploy(process.env.VOXEL_ADDRESS);
     await voxelDistribution.deployed();
     console.log({
-        voxel: voxel.address,
         voxelDistribution: voxelDistribution.address,
     });
 }
