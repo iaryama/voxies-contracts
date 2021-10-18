@@ -31,10 +31,14 @@ cd voxies-contracts
 npm i
 ```
 
-- Create `.env` file
+### Configure project
+**Environment Configuration**
+- Copy `.example.env` to `.env`
 ```sh
 cp .example.env .env
 ```
+
+**Private Key Configuration**
 - Configure environment variables in `.env`
 ```
 DEPLOYER_PRIVATE_KEY=<private-key>
