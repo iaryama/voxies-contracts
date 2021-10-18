@@ -10,7 +10,7 @@ import "./utils/AccessProtected.sol";
 contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
-    mapping(string => uint8) public hashes;
+    mapping(string => bool) public hashes;
 
     constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) {}
 
@@ -26,8 +26,8 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
         string memory hash,
         string memory data
     ) public onlyAdmin returns (uint256) {
-        require(hashes[hash] != 1, "NFT for hash already minted");
-        hashes[hash] = 1;
+        require(hashes[hash] == false, "NFT for hash already minted");
+        hashes[hash] = true;
         _tokenIds.increment();
         uint256 newTokenId = _tokenIds.current();
         _mint(recipient, newTokenId);
