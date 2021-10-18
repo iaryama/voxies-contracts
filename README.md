@@ -57,17 +57,17 @@ npm test
 
 ### Deploy to Testnet
 ```sh
-npx hardhat run --network <your-network>
+npx hardhat run --network <your-network> scripts/deploy.js
 ```
 ## Verify smart contracts
 ### on Mumbai Testnet
 ```sh
-npm run verify:mumbai
+npx hardhat verify --network mumbai DEPLOYED_CONTRACT_ADDRESS "Constructor argument 1"
 ```
 
 ### on Polygon Mainnet
 ```sh
-npm run verify:polygon
+npx hardhat verify --network polygon DEPLOYED_CONTRACT_ADDRESS "Constructor argument 1"
 ```
 
 
