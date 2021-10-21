@@ -26,8 +26,8 @@ contract NftAuction {
 
     mapping(uint256 => Auction) public auctions;
     //mapping(address => Auction) public getHisghestBidder;
-    IERC20 private iERC20;
-    IVoxelNFT private sNft_;
+    IERC20 private voxel;
+    IVoxelNFT private nft_;
 
     uint256 public balances;
 
@@ -36,8 +36,8 @@ contract NftAuction {
     event AuctionClosed( uint256 nftId, uint256 highestBid, address highestBidder);
 
     event BidPlaced(uint256 nftId, uint256 bidPrice, address bidder);
-    constructor(IVoxelNFT _sNft)  {
-        sNft_ = _sNft;
+    constructor(IVoxelNFT _nft)  {
+        nft_ = _nft;
     }
 
     function getCurrentPrice(uint256 _nftId) public view returns (uint256) {
@@ -65,9 +65,9 @@ contract NftAuction {
     function openAuction(uint8 _orderType,uint256 _nftId, uint256 _initialBid,uint256 _endBid,uint256 _duration) internal {
         require(auctions[_nftId].isActive == false, "Ongoing auction detected");
         require(_duration > 0 && _initialBid > 0, "Invalid input");
-        require(sNft_.ownerOf(_nftId) == msg.sender, "Not NFT owner");
+        require(nft_.ownerOf(_nftId) == msg.sender, "Not NFT owner");
 
-        sNft_.transfer(_nftId, address(this));
+        nft_.transfer(_nftId, address(this));
 
         auctions[_nftId].orderType = _orderType;
         auctions[_nftId].startBid = _initialBid;
@@ -92,10 +92,10 @@ contract NftAuction {
         }
 
         //iERC20.approve(address(this), _amount);
-        iERC20.transferFrom(msg.sender, address(this), _amount);
+        voxel.transferFrom(msg.sender, address(this), _amount);
 
         if (auctions[_nftId].originalOwner != auctions[_nftId].highestBidder) {
-            iERC20.transfer(auctions[_nftId].highestBidder,auctions[_nftId].highestBid);
+            voxel.transfer(auctions[_nftId].highestBidder,auctions[_nftId].highestBid);
         }
 
         auctions[_nftId].highestBid = _amount;
@@ -113,17 +113,17 @@ contract NftAuction {
 
         uint256 currentPrice = getCurrentPrice(_nftId);
         
-        iERC20.transferFrom(msg.sender, address(this), _amount);
+        voxel.transferFrom(msg.sender, address(this), _amount);
         require(_amount >= currentPrice, "price error");
         auctions[_nftId].isSold == true;
         //iERC20.approve(address(this), _amount);
-        iERC20.transferFrom(msg.sender, address(this), _amount);
+        voxel.transferFrom(msg.sender, address(this), _amount);
         
         if (_amount > currentPrice) {
-            iERC20.transferFrom(address(this),msg.sender, _amount - currentPrice);
+            voxel.transferFrom(address(this),msg.sender, _amount - currentPrice);
         }
         
-        sNft_.safeTransferFrom(address(this), msg.sender,_nftId);
+        nft_.safeTransferFrom(address(this), msg.sender,_nftId);
 
         emit BidPlaced(_nftId,auctions[_nftId].highestBid,auctions[_nftId].highestBidder);
     }
@@ -135,10 +135,10 @@ contract NftAuction {
 
         
         if (auctions[_nftId].originalOwner != auctions[_nftId].highestBidder) {
-            iERC20.transfer(auctions[_nftId].highestBidder,auctions[_nftId].highestBid);
+            voxel.transfer(auctions[_nftId].highestBidder,auctions[_nftId].highestBid);
         }
 
-        sNft_.transfer(_nftId, auctions[_nftId].highestBidder);
+        nft_.transfer(_nftId, auctions[_nftId].highestBidder);
         auctions[_nftId].isActive = false;
 
         emit AuctionClosed(_nftId,auctions[_nftId].highestBid,auctions[_nftId].highestBidder);
