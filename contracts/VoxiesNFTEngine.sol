@@ -9,7 +9,7 @@ import "./utils/AccessProtected.sol";
 
 contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected {
     using Counters for Counters.Counter;
-    Counters.Counter private _tokenIds;
+    Counters.Counter public _tokenIds;
     mapping(string => bool) public hashes;
 
     constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) {}
@@ -19,19 +19,14 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
      *
      * @param recipient - NFT will be issued to recipient
      * @param hash - Artwork Metadata IPFS hash
-     * @param data - Artwork Metadata URI/Data
      */
-    function issueToken(
-        address recipient,
-        string memory hash,
-        string memory data
-    ) public onlyAdmin returns (uint256) {
+    function issueToken(address recipient,string memory hash) public onlyAdmin returns (uint256) {
         require(hashes[hash] == false, "NFT for hash already minted");
         hashes[hash] = true;
         _tokenIds.increment();
         uint256 newTokenId = _tokenIds.current();
         _mint(recipient, newTokenId);
-        _setTokenURI(newTokenId, data);
+        _setTokenURI(newTokenId, hash);
         return newTokenId;
     }
 
@@ -40,19 +35,11 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
      *
      * @param recipient - NFT will be issued to recipient
      * @param _hashes - array of Artwork Metadata IPFS hash
-     * @param _URIs - array of Artwork Metadata URI/Data
      */
-    function issueBatch(
-        address recipient,
-        string[] memory _hashes,
-        string[] memory _URIs
-    ) public onlyAdmin returns (uint256[] memory) {
-        require(_hashes.length == _URIs.length, "Hashes & URIs length mismatch");
+    function issueBatch(address recipient,string[] memory _hashes) public onlyAdmin returns (uint256[] memory) {
         uint256[] memory tokenIds = new uint256[](_hashes.length);
         for (uint256 i = 0; i < _hashes.length; i++) {
-            string memory hash = _hashes[i];
-            string memory data = _URIs[i];
-            uint256 tokenId = issueToken(recipient, hash, data);
+            uint256 tokenId = issueToken(recipient, _hashes[i]);
             tokenIds[i] = tokenId;
         }
         return tokenIds;

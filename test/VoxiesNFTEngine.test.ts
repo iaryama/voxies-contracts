@@ -14,7 +14,7 @@ describe("VoxiesNFTEngine Test", async () => {
         vox: VoxiesNFTEngine;
 
     beforeEach(async () => {
-        voxelEngine = await ethers.getContractFactory("VoxiesNFTEngine");
+        voxelEngine = (await ethers.getContractFactory("VoxiesNFTEngine")) as VoxiesNFTEngine__factory;
         vox = await voxelEngine.deploy("VoxelNFT", "VOX");
         [owner, accounts1, accounts2, accounts3, accounts4, accounts5] = await ethers.getSigners();
     });
@@ -29,16 +29,14 @@ describe("VoxiesNFTEngine Test", async () => {
         it("owner should be able to mint", async () => {
             const recepient = await accounts1.getAddress();
             const hash = "some-hash";
-            const data = "some-uri";
-            await expect(vox.issueToken(recepient, hash, data)).to.emit(vox, "Transfer");
+            await expect(vox.issueToken(recepient, hash)).to.emit(vox, "Transfer");
             const nftOwner = await vox.ownerOf(1);
             expect(nftOwner).to.equal(recepient);
         });
         it("non-owner should not be able to mint", async () => {
             const recepient = await accounts1.getAddress();
-            const hash = "some-hash";
-            const data = "some-uri";
-            await expect(vox.connect(accounts1).issueToken(recepient, hash, data)).to.be.revertedWith(
+            const hash = "some-hash";            
+            await expect(vox.connect(accounts1).issueToken(recepient, hash)).to.be.revertedWith(
                 "Caller does not have Admin Access"
             );
         });
@@ -62,19 +60,17 @@ describe("VoxiesNFTEngine Test", async () => {
     describe("Functionality Tests", async () => {
         it("should not be able to mint NFT with same hash", async () => {
             const recepient = await accounts1.getAddress();
-            const hash = "some-hash";
-            const data = "some-uri";
-            await expect(vox.connect(accounts1).issueToken(recepient, hash, data)).to.be.revertedWith(
+            const hash = "some-hash";            
+            await expect(vox.connect(accounts1).issueToken(recepient, hash)).to.be.revertedWith(
                 "Caller does not have Admin Access"
             );
         });
         it("nft-owner should be able to transfer NFT", async () => {
             const nftOwner = await accounts1.getAddress();
             const recepient = await accounts2.getAddress();
-            const hash = "some-hash";
-            const data = "some-uri";
-            const nftId = await vox.callStatic.issueToken(nftOwner, hash, data);
-            await vox.issueToken(nftOwner, hash, data);
+            const hash = "some-hash";            
+            const nftId = await vox.callStatic.issueToken(nftOwner, hash);
+            await vox.issueToken(nftOwner, hash);
             await expect(vox.connect(accounts1).transferFrom(nftOwner, recepient, nftId)).to.emit(
                 vox,
                 "Transfer"
@@ -93,10 +89,9 @@ describe("VoxiesNFTEngine Test", async () => {
         it("nft-owner should be able to approve other addresses", async () => {
             const nftOwner = await accounts2.getAddress();
             const user = await accounts3.getAddress();
-            const hash = "some-hash";
-            const data = "some-uri";
+            const hash = "some-hash";            
             const nftId = 1;
-            await vox.issueToken(nftOwner, hash, data);
+            await vox.issueToken(nftOwner, hash);
             await expect(vox.connect(accounts2).approve(user, nftId)).to.emit(vox, "Approval");
             const approved = await vox.getApproved(nftId);
             expect(approved).to.be.equal(user);
@@ -105,13 +100,11 @@ describe("VoxiesNFTEngine Test", async () => {
             const nftOwner = await accounts2.getAddress();
             const approved = await accounts3.getAddress();
             const recepient = await accounts3.getAddress();
-            const hash = "some-hash";
-            const data = "some-uri";
+            const hash = "some-hash";            
             const hashh = "some-hashh";
-            const dataa = "some-urii";
-            const nftId = await vox.callStatic.issueToken(nftOwner, hash, data);
-            await vox.issueToken(nftOwner, hash, data);
-            await vox.issueToken(approved, hashh, dataa);
+            const nftId = await vox.callStatic.issueToken(nftOwner, hash);
+            await vox.issueToken(nftOwner, hash);
+            await vox.issueToken(approved, hashh);
             await vox.connect(accounts2).setApprovalForAll(approved, true);
             await expect(vox.connect(accounts3).transferFrom(nftOwner, recepient, nftId)).to.emit(
                 vox,
