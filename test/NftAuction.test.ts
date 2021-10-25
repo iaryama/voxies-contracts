@@ -62,7 +62,7 @@ describe("Nft Auction Test", async () => {
                         
             var approvalResult = await vox.connect(accounts1).approve(auction.address, nftId);
             await expect(approvalResult).to.emit(vox, "Approval");
-            var auctionResult = await auction.connect(accounts1).dutchAuction(nftId,startBid,endBid,duration);
+            var auctionResult = await auction.connect(accounts1).startDutchAuction(nftId,startBid,endBid,duration);
             await expect(auctionResult).to.emit(auction,"NewAuctionOpened");
         });
         it("Owner of Nft should start English Auction", async () => {
@@ -72,7 +72,7 @@ describe("Nft Auction Test", async () => {
 
             var approvalResult = await vox.connect(accounts1).approve(auction.address, nftId);
             await expect(approvalResult).to.emit(vox, "Approval");
-            var auctionResult = await auction.connect(accounts1).englishAuction(nftId,startBid,duration);
+            var auctionResult = await auction.connect(accounts1).startEnglishAuction(nftId,startBid,duration);
             await expect(auctionResult).to.emit(auction,"NewAuctionOpened");
             
         });
@@ -83,8 +83,6 @@ describe("Nft Auction Test", async () => {
 
             var approvalResult = await voxel.connect(accounts2).approve(auction.address, newBid+startBid);
             await expect(approvalResult).to.emit(voxel, "Approval");
-            // var approvallResult = await voxel.approve(auction.address, newBid);
-            // await expect(approvallResult).to.emit(voxel, "Approval");
 
             var bidResult = await auction.connect(accounts2).buyNow(nftId,newBid);
             await expect(bidResult).to.emit(auction,"BidPlaced");

@@ -56,12 +56,12 @@ interface IVoxelNFT {
         }
     }
 
-    function dutchAuction(uint256 _nftId, uint256 _startPrice, uint256 _endBid, uint256 _duration) public {
+    function startDutchAuction(uint256 _nftId, uint256 _startPrice, uint256 _endBid, uint256 _duration) public {
         require(_startPrice > _endBid, "End price should be lower than start price");
         openAuction(1,_nftId, _startPrice, _endBid, _duration);
     } 
 
-    function englishAuction(uint256 _nftId, uint256 _startPrice, uint256 _duration) public {
+    function startEnglishAuction(uint256 _nftId, uint256 _startPrice, uint256 _duration) public {
          openAuction(2,_nftId, _startPrice, 0, _duration);
     }
     
