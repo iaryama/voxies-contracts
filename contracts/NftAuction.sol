@@ -1,16 +1,16 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "hardhat/console.sol";
 
 interface IVoxelNFT {
-    function issueToken(uint256, string memory, string memory) external returns(
-        uint256
-    );
+    function issueToken(uint256, string memory, string memory) external returns(uint256);
     function ownerOf(uint256) external view returns (address);
-    function transfer(uint256, address) external;
-    function safeTransferFrom( address from, address to, uint256 tokenId) external;
+    function transferFrom(address from, address to, uint256 tokenId) external;
+    //function safeTransferFrom( address from, address to, uint256 tokenId) external;
 }
-contract NftAuction {
+ contract NftAuction{
     struct Auction {
         uint8 orderType;
         uint256 highestBid;
@@ -26,20 +26,22 @@ contract NftAuction {
 
     mapping(uint256 => Auction) public auctions;
     //mapping(address => Auction) public getHisghestBidder;
+    
     IERC20 private voxel;
     IVoxelNFT private nft_;
-
+    using SafeERC20 for IERC20;
     uint256 public balances;
 
-    event NewAuctionOpened( uint256 nftId, uint256 startingBid, uint256 closingTime, address originalOwner);
+    event NewAuctionOpened(uint8 orderType, uint256 nftId, uint256 startingBid, uint256 closingTime, address originalOwner);
 
     event AuctionClosed( uint256 nftId, uint256 highestBid, address highestBidder);
 
     event BidPlaced(uint256 nftId, uint256 bidPrice, address bidder);
-    constructor(IVoxelNFT _nft)  {
+    constructor(IERC20 _voxel,IVoxelNFT _nft)  {
         nft_ = _nft;
+        voxel= _voxel;
     }
-
+    
     function getCurrentPrice(uint256 _nftId) public view returns (uint256) {
         if (auctions[_nftId].orderType == 2) {
             uint256 lastBidPrice = auctions[_nftId].highestBid;
@@ -47,28 +49,27 @@ contract NftAuction {
         } 
     else {
             uint256 _startPrice = auctions[_nftId].startBid;
+            uint256 _endPrice = auctions[_nftId].endBid;
             uint256 _startBlock = auctions[_nftId].startingTime;
-            uint256 tickPerBlock = (_startPrice - auctions[_nftId].endBid) / (auctions[_nftId].closingTime - _startBlock);
-            return _startPrice - ((block.number - _startBlock) * tickPerBlock);
+            uint256 tickPerBlock = (_startPrice - _endPrice) / (auctions[_nftId].closingTime - _startBlock);
+            return _startPrice - ((block.timestamp - _startBlock) * tickPerBlock);
         }
     }
 
-    function dutchAuction(uint256 _nftId, uint256 _startPrice, uint256 _endBid, uint256 _endBlock) public {
+    function dutchAuction(uint256 _nftId, uint256 _startPrice, uint256 _endBid, uint256 _duration) public {
         require(_startPrice > _endBid, "End price should be lower than start price");
-        openAuction(1,_nftId, _startPrice, _endBid, _endBlock);
+        openAuction(1,_nftId, _startPrice, _endBid, _duration);
     } 
 
-    function englishAuction(uint256 _nftId, uint256 _startPrice, uint256 _endBlock) public {
-         openAuction(2,_nftId, _startPrice, 0, _endBlock);
+    function englishAuction(uint256 _nftId, uint256 _startPrice, uint256 _duration) public {
+         openAuction(2,_nftId, _startPrice, 0, _duration);
     }
     
     function openAuction(uint8 _orderType,uint256 _nftId, uint256 _initialBid,uint256 _endBid,uint256 _duration) internal {
         require(auctions[_nftId].isActive == false, "Ongoing auction detected");
         require(_duration > 0 && _initialBid > 0, "Invalid input");
         require(nft_.ownerOf(_nftId) == msg.sender, "Not NFT owner");
-
-        nft_.transfer(_nftId, address(this));
-
+        nft_.transferFrom( msg.sender,address(this),_nftId);
         auctions[_nftId].orderType = _orderType;
         auctions[_nftId].startBid = _initialBid;
         auctions[_nftId].endBid = _endBid;        
@@ -78,8 +79,7 @@ contract NftAuction {
         auctions[_nftId].highestBidder = msg.sender;
         auctions[_nftId].originalOwner = msg.sender;
         auctions[_nftId].isActive = true;
-
-        emit NewAuctionOpened( _nftId, auctions[_nftId].highestBid, auctions[_nftId].closingTime, auctions[_nftId].highestBidder);
+        emit NewAuctionOpened(_orderType, _nftId, auctions[_nftId].startBid, auctions[_nftId].closingTime, auctions[_nftId].originalOwner);
     }
 
     function placeBid(uint256 _nftId,uint256 _amount) external {
@@ -87,15 +87,14 @@ contract NftAuction {
         require(auctions[_nftId].closingTime > block.timestamp,"Auction is closed");
         require(_amount > auctions[_nftId].highestBid, "Bid is too low");
         require(auctions[_nftId].orderType == 2, "only for English Auction");
-        if(block.timestamp-auctions[_nftId].closingTime<=600){
+        if(auctions[_nftId].closingTime-block.timestamp<=600){
             auctions[_nftId].closingTime+=60;
         }
 
-        //iERC20.approve(address(this), _amount);
-        voxel.transferFrom(msg.sender, address(this), _amount);
+        voxel.safeTransferFrom(msg.sender, address(this), _amount);
 
         if (auctions[_nftId].originalOwner != auctions[_nftId].highestBidder) {
-            voxel.transfer(auctions[_nftId].highestBidder,auctions[_nftId].highestBid);
+            voxel.safeTransfer(auctions[_nftId].highestBidder,auctions[_nftId].highestBid);
         }
 
         auctions[_nftId].highestBid = _amount;
@@ -112,18 +111,20 @@ contract NftAuction {
         require(auctions[_nftId].isSold == false, "Already sold");
 
         uint256 currentPrice = getCurrentPrice(_nftId);
+        console.log("current price",currentPrice);
         
-        voxel.transferFrom(msg.sender, address(this), _amount);
+        voxel.safeTransferFrom(msg.sender, address(this), _amount);
         require(_amount >= currentPrice, "price error");
         auctions[_nftId].isSold == true;
-        //iERC20.approve(address(this), _amount);
-        voxel.transferFrom(msg.sender, address(this), _amount);
         
         if (_amount > currentPrice) {
-            voxel.transferFrom(address(this),msg.sender, _amount - currentPrice);
+            uint256 extra_amount = _amount - currentPrice;
+            console.log("extra amount",extra_amount);
+
+            voxel.safeTransfer(msg.sender, extra_amount);
         }
         
-        nft_.safeTransferFrom(address(this), msg.sender,_nftId);
+        nft_.transferFrom(address(this), msg.sender,_nftId);
 
         emit BidPlaced(_nftId,auctions[_nftId].highestBid,auctions[_nftId].highestBidder);
     }
@@ -135,10 +136,10 @@ contract NftAuction {
 
         
         if (auctions[_nftId].originalOwner != auctions[_nftId].highestBidder) {
-            voxel.transfer(auctions[_nftId].highestBidder,auctions[_nftId].highestBid);
+            voxel.safeTransfer(auctions[_nftId].highestBidder,auctions[_nftId].highestBid);
         }
 
-        nft_.transfer(_nftId, auctions[_nftId].highestBidder);
+        nft_.transferFrom(address(this), auctions[_nftId].highestBidder,_nftId);
         auctions[_nftId].isActive = false;
 
         emit AuctionClosed(_nftId,auctions[_nftId].highestBid,auctions[_nftId].highestBidder);
