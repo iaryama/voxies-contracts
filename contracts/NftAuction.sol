@@ -111,7 +111,6 @@ interface IVoxelNFT {
         require(auctions[_nftId].isSold == false, "Already sold");
 
         uint256 currentPrice = getCurrentPrice(_nftId);
-        console.log("current price",currentPrice);
         
         voxel.safeTransferFrom(msg.sender, address(this), _amount);
         require(_amount >= currentPrice, "price error");
@@ -119,8 +118,6 @@ interface IVoxelNFT {
         
         if (_amount > currentPrice) {
             uint256 extra_amount = _amount - currentPrice;
-            console.log("extra amount",extra_amount);
-
             voxel.safeTransfer(msg.sender, extra_amount);
         }
         

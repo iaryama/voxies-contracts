@@ -106,24 +106,21 @@ describe("Nft Auction Test", async () => {
             var approvallResult = await voxel.connect(accounts2).approve(auction.address, newBid1);
             await expect(approvallResult).to.emit(voxel, "Approval");
             var bidResult = await auction.connect(accounts2).placeBid(nftId,newBid1);
-            await expect(bidResult).to.emit(auction,"BidPlaced");    
-            console.log("2"); 
+            await expect(bidResult).to.emit(auction,"BidPlaced");  
 
             var approvallResult = await voxel.connect(accounts3).approve(auction.address, newBid2);
             await expect(approvallResult).to.emit(voxel, "Approval");
             var bidResult = await auction.connect(accounts3).placeBid(nftId,newBid2);
             await expect(bidResult).to.emit(auction,"BidPlaced"); 
-            console.log("3"); 
 
             var approvallResult = await voxel.connect(accounts4).approve(auction.address, newBid3);
             await expect(approvallResult).to.emit(voxel, "Approval");
             var bidResult = await auction.connect(accounts4).placeBid(nftId,newBid3);
             await expect(bidResult).to.emit(auction,"BidPlaced");
-            console.log("4"); 
         });
         it("User should be able to Claim Nft won in English Auction", async () => {
             const nftId=2;
-
+            await ethers.provider.send("evm_increaseTime", [1800]);
             var nftResult = await auction.connect(accounts4).closeAuction(nftId);
             await expect(nftResult).to.emit(auction,"AuctionClosed");
         });
