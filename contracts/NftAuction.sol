@@ -114,7 +114,7 @@ interface IVoxelNFT {
         
         voxel.safeTransferFrom(msg.sender, address(this), _amount);
         require(_amount >= currentPrice, "price error");
-        auctions[_nftId].isSold == true;
+        auctions[_nftId].isSold = true;
         
         if (_amount > currentPrice) {
             uint256 extra_amount = _amount - currentPrice;
