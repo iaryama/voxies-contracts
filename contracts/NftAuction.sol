@@ -28,7 +28,7 @@ interface IVoxelNFT {
 
 contract NftAuction is IERC721Receiver {
     struct Auction {
-        uint8 orderType;
+        AuctionType orderType;
         uint256 highestBid;
         uint256 startBid;
         uint256 endBid;
@@ -40,6 +40,13 @@ contract NftAuction is IERC721Receiver {
         bool isSold;
     }
 
+    enum AuctionType{ 
+        dutchAuction,
+        englishAuction
+    }
+    AuctionType choice;
+    //AuctionType orderType;
+
     mapping(uint256 => Auction) public auctions;
 
     IERC20 public immutable voxel;
@@ -48,7 +55,7 @@ contract NftAuction is IERC721Receiver {
     uint256 public balances;
 
     event NewAuctionOpened(
-        uint8 orderType,
+        AuctionType orderType,
         uint256 nftId,
         uint256 startingBid,
         uint256 closingTime,
@@ -59,13 +66,18 @@ contract NftAuction is IERC721Receiver {
 
     event BidPlaced(uint256 nftId, uint256 bidPrice, address bidder);
 
+    event nftBoughtInDutchAuction(uint256 nftId, uint256 bidPrice, address buyer);
+
     constructor(IERC20 _voxel, IVoxelNFT _nft) {
         nft_ = _nft;
         voxel = _voxel;
     }
 
-    function getCurrentPrice(uint256 _nftId) public view returns (uint256) {
-        if (auctions[_nftId].orderType == 2) {
+    function getCurrentPrice(uint256 _nftId, AuctionType orderType) public returns (uint256) {
+        
+        choice = AuctionType.englishAuction;
+        
+        if ( choice == orderType ) {
             uint256 lastBidPrice = auctions[_nftId].highestBid;
             return lastBidPrice == 0 ? auctions[_nftId].highestBid : lastBidPrice;
         } else {
@@ -84,7 +96,8 @@ contract NftAuction is IERC721Receiver {
         uint256 _duration
     ) public {
         require(_startPrice > _endBid, "End price should be lower than start price");
-        openAuction(1, _nftId, _startPrice, _endBid, _duration);
+        choice = AuctionType.dutchAuction;
+        openAuction(choice, _nftId, _startPrice, _endBid, _duration);
     }
 
     function startEnglishAuction(
@@ -92,16 +105,17 @@ contract NftAuction is IERC721Receiver {
         uint256 _startPrice,
         uint256 _duration
     ) public {
-        openAuction(2, _nftId, _startPrice, 0, _duration);
+        choice = AuctionType.englishAuction;
+        openAuction(choice, _nftId, _startPrice, 0, _duration);
     }
 
     function openAuction(
-        uint8 _orderType,
+        AuctionType _orderType,
         uint256 _nftId,
         uint256 _initialBid,
         uint256 _endBid,
         uint256 _duration
-    ) internal {
+    ) internal{
         require(auctions[_nftId].isActive == false, "Ongoing auction detected");
         require(_duration > 0 && _initialBid > 0, "Invalid input");
         require(nft_.ownerOf(_nftId) == msg.sender, "Not NFT owner");
@@ -124,11 +138,12 @@ contract NftAuction is IERC721Receiver {
         );
     }
 
-    function placeBid(uint256 _nftId, uint256 _amount) external {
+    function placeBidInEnglishAuction(uint256 _nftId, uint256 _amount, AuctionType orderType) external {
+        choice = AuctionType.englishAuction;
         require(auctions[_nftId].isActive == true, "Not active auction");
         require(auctions[_nftId].closingTime > block.timestamp, "Auction is closed");
         require(_amount > auctions[_nftId].highestBid, "Bid is too low");
-        require(auctions[_nftId].orderType == 2, "only for English Auction");
+        require(orderType == choice, "only for English Auction");
         if (auctions[_nftId].closingTime - block.timestamp <= 600) {
             auctions[_nftId].closingTime += 60;
         }
@@ -145,14 +160,15 @@ contract NftAuction is IERC721Receiver {
         emit BidPlaced(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
     }
 
-    function buyNow(uint256 _nftId, uint256 _amount) external {
+    function buyNftFromDutchAuction(uint256 _nftId, uint256 _amount, AuctionType orderType) external {
+        choice = AuctionType.dutchAuction;
         require(auctions[_nftId].isActive == true, "Not active auction");
         require(auctions[_nftId].closingTime > block.timestamp, "Auction is closed");
         require(_amount > auctions[_nftId].highestBid, "Bid is too low");
-        require(auctions[_nftId].orderType == 1, "only for Dutch Auction");
+        require(orderType == choice, "only for Dutch Auction");
         require(auctions[_nftId].isSold == false, "Already sold");
 
-        uint256 currentPrice = getCurrentPrice(_nftId);
+        uint256 currentPrice = getCurrentPrice(_nftId,choice);
 
         voxel.safeTransferFrom(msg.sender, address(this), _amount);
         require(_amount >= currentPrice, "price error");
@@ -165,12 +181,13 @@ contract NftAuction is IERC721Receiver {
 
         nft_.safeTransferFrom(address(this), msg.sender, _nftId);
 
-        emit BidPlaced(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
+        emit nftBoughtInDutchAuction(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
     }
 
     function closeAuction(uint256 _nftId) external {
         require(auctions[_nftId].isActive == true, "Not active auction");
         require(auctions[_nftId].closingTime <= block.timestamp, "Auction is not closed");
+        require(auctions[_nftId].highestBidder == msg.sender,"You are not ower of this NFT" );
 
         if (auctions[_nftId].originalOwner != auctions[_nftId].highestBidder) {
             voxel.safeTransfer(auctions[_nftId].highestBidder, auctions[_nftId].highestBid);

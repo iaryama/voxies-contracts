@@ -121,8 +121,8 @@ describe("Nft Auction Test", async () => {
             var approvalResult = await voxel.connect(accounts2).approve(auction.address, newBid + startBid);
             await expect(approvalResult).to.emit(voxel, "Approval");
 
-            var bidResult = await auction.connect(accounts2).buyNow(nftId, newBid);
-            await expect(bidResult).to.emit(auction, "BidPlaced");
+            var bidResult = await auction.connect(accounts2).buyNftFromDutchAuction(nftId, newBid,0);
+            await expect(bidResult).to.emit(auction, "nftBoughtInDutchAuction");
         });
         it("User should not be able to place bid in Inactive Dutch Auction", async () => {
             const nftId = 4;
@@ -132,7 +132,7 @@ describe("Nft Auction Test", async () => {
             var approvalResult = await voxel.connect(accounts2).approve(auction.address, newBid + startBid);
             await expect(approvalResult).to.emit(voxel, "Approval");
 
-            await expect(auction.connect(accounts2).buyNow(nftId, newBid)).to.be.revertedWith(
+            await expect(auction.connect(accounts2).buyNftFromDutchAuction(nftId, newBid,0)).to.be.revertedWith(
                 "Not active auction"
             );
         });
@@ -144,7 +144,7 @@ describe("Nft Auction Test", async () => {
             var approvalResult = await voxel.connect(accounts3).approve(auction.address, newBid + startBid);
             await expect(approvalResult).to.emit(voxel, "Approval");
 
-            await expect(auction.connect(accounts3).buyNow(nftId, newBid)).to.be.revertedWith("Already sold");
+            await expect(auction.connect(accounts3).buyNftFromDutchAuction(nftId, newBid,0)).to.be.revertedWith("Already sold");
         });
         it("User should not be able to place bid in closed Dutch Auction", async () => {
             const nftId = 1;
@@ -155,7 +155,7 @@ describe("Nft Auction Test", async () => {
             var approvalResult = await voxel.connect(accounts2).approve(auction.address, newBid + startBid);
             await expect(approvalResult).to.emit(voxel, "Approval");
 
-            await expect(auction.connect(accounts2).buyNow(nftId, newBid)).to.be.revertedWith(
+            await expect(auction.connect(accounts2).buyNftFromDutchAuction(nftId, newBid,0)).to.be.revertedWith(
                 "Auction is closed"
             );
         });
@@ -166,7 +166,7 @@ describe("Nft Auction Test", async () => {
             var approvallResult = await voxel.connect(accounts2).approve(auction.address, newBid);
             await expect(approvallResult).to.emit(voxel, "Approval");
 
-            var bidResult = await auction.connect(accounts2).placeBid(nftId, newBid);
+            var bidResult = await auction.connect(accounts2).placeBidInEnglishAuction(nftId, newBid,1);
             await expect(bidResult).to.emit(auction, "BidPlaced");
         });
         it("User should not be able to place bid in Inactive English Auction", async () => {
@@ -176,7 +176,7 @@ describe("Nft Auction Test", async () => {
             var approvallResult = await voxel.connect(accounts2).approve(auction.address, newBid);
             await expect(approvallResult).to.emit(voxel, "Approval");
 
-            await expect(auction.connect(accounts2).placeBid(nftId, newBid)).to.be.revertedWith(
+            await expect(auction.connect(accounts2).placeBidInEnglishAuction(nftId, newBid,1)).to.be.revertedWith(
                 "Not active auction"
             );
         });
@@ -188,17 +188,17 @@ describe("Nft Auction Test", async () => {
 
             var approvallResult = await voxel.connect(accounts2).approve(auction.address, newBid1);
             await expect(approvallResult).to.emit(voxel, "Approval");
-            var bidResult = await auction.connect(accounts2).placeBid(nftId, newBid1);
+            var bidResult = await auction.connect(accounts2).placeBidInEnglishAuction(nftId, newBid1,1);
             await expect(bidResult).to.emit(auction, "BidPlaced");
 
             var approvallResult = await voxel.connect(accounts3).approve(auction.address, newBid2);
             await expect(approvallResult).to.emit(voxel, "Approval");
-            var bidResult = await auction.connect(accounts3).placeBid(nftId, newBid2);
+            var bidResult = await auction.connect(accounts3).placeBidInEnglishAuction(nftId, newBid2,1);
             await expect(bidResult).to.emit(auction, "BidPlaced");
 
             var approvallResult = await voxel.connect(accounts4).approve(auction.address, newBid3);
             await expect(approvallResult).to.emit(voxel, "Approval");
-            var bidResult = await auction.connect(accounts4).placeBid(nftId, newBid3);
+            var bidResult = await auction.connect(accounts4).placeBidInEnglishAuction(nftId, newBid3,1);
             await expect(bidResult).to.emit(auction, "BidPlaced");
         });
         it("User should be able to Claim Nft won in English Auction", async () => {
@@ -225,7 +225,7 @@ describe("Nft Auction Test", async () => {
             var approvallResult = await voxel.connect(accounts2).approve(auction.address, newBid);
             await expect(approvallResult).to.emit(voxel, "Approval");
 
-            await expect(auction.connect(accounts2).placeBid(nftId, newBid)).to.be.revertedWith(
+            await expect(auction.connect(accounts2).placeBidInEnglishAuction(nftId, newBid,1)).to.be.revertedWith(
                 "Auction is closed"
             );
         });
