@@ -10,7 +10,7 @@ import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Rec
 contract NFTSale is OwnableUpgradeable, IERC721Receiver {
     using Address for address;
 
-    address public nftAddress;
+    address public immutable nftAddress;
     bool public isActive;
 
     struct Sale {
