@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
 
 abstract contract AccessProtected is Context, Ownable {
-    mapping(address => bool) private _admins; // user address => admin? mapping
+    mapping(address => bool) public _admins; // user address => admin? mapping
 
     event AdminAccessSet(address _admin, bool _enabled);
 
