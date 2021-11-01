@@ -5,7 +5,7 @@ import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract PolygonVoxel is Ownable, ERC20("Voxel Token", "VXL") {
-    address private _childChainManagerProxy;
+    address public _childChainManagerProxy;
 
     constructor(address childChainManagerProxy_) {
         _childChainManagerProxy = childChainManagerProxy_;

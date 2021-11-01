@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.4;
 
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 // NFTSale SMART CONTRACT
-contract NFTSale is OwnableUpgradeable, IERC721Receiver {
+contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
     using Address for address;
 
-    address public nftAddress;
+    address public immutable nftAddress;
     bool public isActive;
 
     struct Sale {
@@ -26,11 +27,23 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver {
     // user address => admin? mapping
     mapping(address => bool) private _admins;
 
-    event ContractStatusSet(address _admin, bool _isActive);
-    event AdminAccessSet(address _admin, bool _enabled);
-    event SaleAdded(uint256 _nftId, uint256 _price, address _owner, uint256 _timestamp);
-    event SaleCancelled(uint256 _nftId, uint256 _price, address _owner, address _cancelledBy, uint256 _timestamp);
-    event Sold(uint256 _nftId, address _seller, address _buyer, uint256 _price, uint256 _timestamp);
+    event ContractStatusSet(address indexed _admin, bool indexed _isActive);
+    event AdminAccessSet(address indexed _admin, bool indexed _enabled);
+    event SaleAdded(uint256 indexed _nftId, uint256 indexed _price, address indexed _owner, uint256 _timestamp);
+    event SaleCancelled(
+        uint256 indexed _nftId,
+        uint256 _price,
+        address indexed _owner,
+        address _cancelledBy,
+        uint256 _timestamp
+    );
+    event Sold(
+        uint256 indexed _nftId,
+        address indexed _seller,
+        address indexed _buyer,
+        uint256 _price,
+        uint256 _timestamp
+    );
 
     constructor(address _nftAddress) {
         require(_nftAddress.isContract(), "_nftAddress must be a contract");
@@ -82,7 +95,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver {
         uint256 price,
         address payable artist,
         address nftOwner
-    ) private {
+    ) private nonReentrant {
         require(!_nftSales[nftId].isActive, "NFT Sale is active");
         Sale memory sale = Sale(nftId, price, artist, true, false);
         _nftSales[nftId] = sale;
@@ -188,11 +201,11 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver {
      *
      * @param nftId - id of the NFT
      */
-    function cancelSale(uint256 nftId) external onlyAdmin {
+    function cancelSale(uint256 nftId) external onlyAdmin nonReentrant {
         require(_nftSales[nftId].isActive, "NFT is not up for sale");
         _nftSales[nftId].isActive = false;
         _nftSales[nftId].isCancelled = true;
-        IERC721(nftAddress).safeTransferFrom(address(this), owner(), nftId);
+        IERC721(nftAddress).safeTransferFrom(address(this), _nftSales[nftId].owner, nftId);
         emit SaleCancelled(nftId, _nftSales[nftId].price, _nftSales[nftId].owner, _msgSender(), block.timestamp);
     }
 
@@ -201,7 +214,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver {
      *
      * @param nftId - nftId of the NFT
      */
-    function _purchaseNFT(uint256 nftId) private {
+    function _purchaseNFT(uint256 nftId) private nonReentrant {
         require(_nftSales[nftId].isActive, "NFT is not for sale");
         address payable seller = _nftSales[nftId].owner;
         address payable buyer = payable(_msgSender());
@@ -255,7 +268,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver {
      * @param nftId - id of the NFT
      * @param buyer - buyer of the NFT
      */
-    function releaseNFT(uint256 nftId, address payable buyer) external onlyAdmin {
+    function releaseNFT(uint256 nftId, address payable buyer) external onlyAdmin nonReentrant {
         require(_nftSales[nftId].isActive, "NFT is not for sale");
         address seller = _nftSales[nftId].owner;
 
