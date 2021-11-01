@@ -27,11 +27,23 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
     // user address => admin? mapping
     mapping(address => bool) private _admins;
 
-    event ContractStatusSet(address _admin, bool _isActive);
-    event AdminAccessSet(address _admin, bool _enabled);
-    event SaleAdded(uint256 _nftId, uint256 _price, address _owner, uint256 _timestamp);
-    event SaleCancelled(uint256 _nftId, uint256 _price, address _owner, address _cancelledBy, uint256 _timestamp);
-    event Sold(uint256 _nftId, address _seller, address _buyer, uint256 _price, uint256 _timestamp);
+    event ContractStatusSet(address indexed _admin, bool indexed _isActive);
+    event AdminAccessSet(address indexed _admin, bool indexed _enabled);
+    event SaleAdded(uint256 indexed _nftId, uint256 indexed _price, address indexed _owner, uint256 _timestamp);
+    event SaleCancelled(
+        uint256 indexed _nftId,
+        uint256 _price,
+        address indexed _owner,
+        address _cancelledBy,
+        uint256 _timestamp
+    );
+    event Sold(
+        uint256 indexed _nftId,
+        address indexed _seller,
+        address indexed _buyer,
+        uint256 _price,
+        uint256 _timestamp
+    );
 
     constructor(address _nftAddress) {
         require(_nftAddress.isContract(), "_nftAddress must be a contract");
@@ -193,7 +205,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
         require(_nftSales[nftId].isActive, "NFT is not up for sale");
         _nftSales[nftId].isActive = false;
         _nftSales[nftId].isCancelled = true;
-        IERC721(nftAddress).safeTransferFrom(address(this), owner(), nftId);
+        IERC721(nftAddress).safeTransferFrom(address(this), _nftSales[nftId].owner, nftId);
         emit SaleCancelled(nftId, _nftSales[nftId].price, _nftSales[nftId].owner, _msgSender(), block.timestamp);
     }
 
