@@ -1,5 +1,4 @@
-import { ethers, waffle, web3 } from "hardhat";
-import "@nomiclabs/hardhat-web3";
+import { ethers, waffle } from "hardhat";
 import { expect, use } from "chai";
 import { Signer } from "ethers";
 import { VoxiesNFTEngine, VoxiesNFTEngine__factory, NFTSale, NFTSale__factory } from "../typechain";

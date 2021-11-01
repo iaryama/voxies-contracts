@@ -1,6 +1,7 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
@@ -26,7 +27,7 @@ interface IVoxelNFT {
     ) external;
 }
 
-contract NftAuction is IERC721Receiver {
+contract NftAuction is IERC721Receiver, ReentrancyGuard {
     struct Auction {
         AuctionType orderType;
         uint256 highestBid;
@@ -115,7 +116,7 @@ contract NftAuction is IERC721Receiver {
         uint256 _initialBid,
         uint256 _endBid,
         uint256 _duration
-    ) internal{
+    ) internal nonReentrant {
         require(auctions[_nftId].isActive == false, "Ongoing auction detected");
         require(_duration > 0 && _initialBid > 0, "Invalid input");
         require(nft_.ownerOf(_nftId) == msg.sender, "Not NFT owner");
@@ -138,7 +139,7 @@ contract NftAuction is IERC721Receiver {
         );
     }
 
-    function placeBidInEnglishAuction(uint256 _nftId, uint256 _amount, AuctionType orderType) external {
+    function placeBidInEnglishAuction(uint256 _nftId, uint256 _amount, AuctionType orderType) external nonReentrant {
         choice = AuctionType.englishAuction;
         require(auctions[_nftId].isActive == true, "Not active auction");
         require(auctions[_nftId].closingTime > block.timestamp, "Auction is closed");
@@ -160,7 +161,7 @@ contract NftAuction is IERC721Receiver {
         emit BidPlaced(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
     }
 
-    function buyNftFromDutchAuction(uint256 _nftId, uint256 _amount, AuctionType orderType) external {
+    function buyNftFromDutchAuction(uint256 _nftId, uint256 _amount, AuctionType orderType) external nonReentrant {
         choice = AuctionType.dutchAuction;
         require(auctions[_nftId].isActive == true, "Not active auction");
         require(auctions[_nftId].closingTime > block.timestamp, "Auction is closed");
@@ -184,7 +185,7 @@ contract NftAuction is IERC721Receiver {
         emit nftBoughtInDutchAuction(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
     }
 
-    function closeAuction(uint256 _nftId) external {
+    function closeAuction(uint256 _nftId) external nonReentrant {
         require(auctions[_nftId].isActive == true, "Not active auction");
         require(auctions[_nftId].closingTime <= block.timestamp, "Auction is not closed");
         require(auctions[_nftId].highestBidder == msg.sender,"You are not ower of this NFT" );

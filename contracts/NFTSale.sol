@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.4;
 
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 // NFTSale SMART CONTRACT
-contract NFTSale is OwnableUpgradeable, IERC721Receiver {
+contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
     using Address for address;
 
     address public immutable nftAddress;
@@ -82,7 +83,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver {
         uint256 price,
         address payable artist,
         address nftOwner
-    ) private {
+    ) private nonReentrant {
         require(!_nftSales[nftId].isActive, "NFT Sale is active");
         Sale memory sale = Sale(nftId, price, artist, true, false);
         _nftSales[nftId] = sale;
@@ -188,7 +189,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver {
      *
      * @param nftId - id of the NFT
      */
-    function cancelSale(uint256 nftId) external onlyAdmin {
+    function cancelSale(uint256 nftId) external onlyAdmin nonReentrant {
         require(_nftSales[nftId].isActive, "NFT is not up for sale");
         _nftSales[nftId].isActive = false;
         _nftSales[nftId].isCancelled = true;
@@ -201,7 +202,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver {
      *
      * @param nftId - nftId of the NFT
      */
-    function _purchaseNFT(uint256 nftId) private {
+    function _purchaseNFT(uint256 nftId) private nonReentrant {
         require(_nftSales[nftId].isActive, "NFT is not for sale");
         address payable seller = _nftSales[nftId].owner;
         address payable buyer = payable(_msgSender());
@@ -255,7 +256,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver {
      * @param nftId - id of the NFT
      * @param buyer - buyer of the NFT
      */
-    function releaseNFT(uint256 nftId, address payable buyer) external onlyAdmin {
+    function releaseNFT(uint256 nftId, address payable buyer) external onlyAdmin nonReentrant {
         require(_nftSales[nftId].isActive, "NFT is not for sale");
         address seller = _nftSales[nftId].owner;
 
