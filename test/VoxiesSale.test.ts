@@ -160,7 +160,7 @@ describe("NFTSale Test", async () => {
             var cancelledResult = await nft.cancelSale(nftId);
             await expect(cancelledResult).to.emit(nft, "SaleCancelled");
             const originalNftOwner = await vox.ownerOf(nftId);
-            await expect(originalNftOwner).to.be.equal(await owner.getAddress());
+            await expect(originalNftOwner).to.be.equal(await accounts3.getAddress());
         });
         it("user should be able to sell NFT minted to him by Admin. Buyer should be able to buy from user", async () => {
             const hash_04 = "some-hash-044";
