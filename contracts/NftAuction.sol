@@ -177,6 +177,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         require(auctions[_nftId].isSold == false, "Already sold");
 
         uint256 currentPrice = getCurrentPrice(_nftId, choice);
+        address seller = auctions[_nftId].originalOwner;
 
         voxel.safeTransferFrom(msg.sender, address(this), _amount);
         require(_amount >= currentPrice, "price error");
@@ -186,7 +187,10 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
             uint256 extra_amount = _amount - currentPrice;
             voxel.safeTransfer(msg.sender, extra_amount);
         }
-
+        
+        //sending price to seller of nft
+        voxel.safeTransfer(seller, currentPrice);
+        //transferring nft to highest bidder
         nft_.safeTransferFrom(address(this), msg.sender, _nftId);
 
         emit BoughtNFTInDutchAuction(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
@@ -197,10 +201,12 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         require(auctions[_nftId].closingTime <= block.timestamp, "Auction is not closed");
         require(auctions[_nftId].highestBidder == msg.sender, "You are not ower of this NFT");
 
-        if (auctions[_nftId].originalOwner != auctions[_nftId].highestBidder) {
-            voxel.safeTransfer(auctions[_nftId].highestBidder, auctions[_nftId].highestBid);
-        }
+        uint256 currentPrice = getCurrentPrice(_nftId, choice);
+        address seller = auctions[_nftId].originalOwner;
 
+        //sending price to seller of nft
+        voxel.safeTransfer(seller, currentPrice);
+        //transferring nft to highest bidder
         nft_.safeTransferFrom(address(this), auctions[_nftId].highestBidder, _nftId);
         auctions[_nftId].isActive = false;
 
