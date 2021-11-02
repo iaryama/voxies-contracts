@@ -69,6 +69,8 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
 
     event BoughtNFTInDutchAuction(uint256 indexed nftId, uint256 indexed bidPrice, address indexed buyer);
 
+    event AuctionCancelled(uint256 indexed nftId, address indexed cancelledBy);
+
     constructor(IERC20 _voxel, IVoxelNFT _nft) {
         nft_ = _nft;
         voxel = _voxel;
@@ -176,6 +178,9 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         require(orderType == choice, "only for Dutch Auction");
         require(auctions[_nftId].isSold == false, "Already sold");
 
+        auctions[_nftId].highestBid = _amount;
+        auctions[_nftId].highestBidder = msg.sender;
+
         uint256 currentPrice = getCurrentPrice(_nftId, choice);
         address seller = auctions[_nftId].originalOwner;
 
@@ -196,7 +201,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         emit BoughtNFTInDutchAuction(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
     }
 
-    function closeEnglishAuction(uint256 _nftId) external nonReentrant {
+    function claimNftFromEnglishAuction(uint256 _nftId) external nonReentrant {
         require(auctions[_nftId].isActive == true, "Not active auction");
         require(auctions[_nftId].closingTime <= block.timestamp, "Auction is not closed");
         require(auctions[_nftId].highestBidder == msg.sender, "You are not ower of this NFT");
@@ -211,6 +216,17 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         auctions[_nftId].isActive = false;
 
         emit EnglishAuctionClosed(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
+    }
+
+    function cancelAuction(uint256 _nftId) external nonReentrant {
+        require(auctions[_nftId].isActive == true, "Not active auction");        
+        require(auctions[_nftId].closingTime > block.timestamp, "Auction is closed, Go to Claim Nft");
+        require(auctions[_nftId].startBid == auctions[_nftId].highestBid, "Bids were placed in the Auction");
+        require(auctions[_nftId].originalOwner == msg.sender, "You are not the creator of Auction");
+        auctions[_nftId].isActive = false;
+        delete auctions[_nftId];
+
+        emit AuctionCancelled(_nftId,msg.sender);
     }
 
     function onERC721Received(
