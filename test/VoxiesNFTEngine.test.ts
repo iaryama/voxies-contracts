@@ -136,6 +136,7 @@ describe("VoxiesNFTEngine Test", async () => {
                 (await vox.getHolderTokenIds(await accounts3.getAddress())).toString()
             );
         });
+<<<<<<< Updated upstream
         it("NFT should be transferrable to whitelisted contract only", async () => {
             const newNFTHolder = await accounts1.getAddress();
             const hash = "hash";
@@ -148,6 +149,14 @@ describe("VoxiesNFTEngine Test", async () => {
                 vox,
                 "Transfer"
             );
+=======
+        it("Non-approved should be able to transfer and burn NFT", async () => {
+            const nftOwner = await accounts2.getAddress();
+            const hash = "some-hash";
+            const nftId = await vox.callStatic.issueToken(nftOwner, hash);
+            await vox.issueToken(nftOwner, hash);
+            await expect(vox.connect(accounts3).burn(nftId)).to.be.revertedWith('Caller Not the Owner Of NFT');;
+>>>>>>> Stashed changes
         });
     });
 });
