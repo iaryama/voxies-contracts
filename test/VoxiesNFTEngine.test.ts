@@ -56,6 +56,20 @@ describe("VoxiesNFTEngine Test", async () => {
             );
             expect(await vox.isAdmin(await accounts1.getAddress())).to.be.equal(false);
         });
+        it("owner should be able to add addresses to contract whitelist", async () => {
+            await expect(vox.addToWhitelist(vox.address));
+        });
+        it("owner should be able to revoke addresses to contract whitelist", async () => {
+            await expect(vox.removeFromWhitelist(vox.address));
+        });
+        it("non-owner should not be able to add or revoke whitelist status", async () => {
+            await expect(vox.connect(accounts1).addToWhitelist(vox.address)).to.be.revertedWith(
+                "Caller does not have Admin Access"
+            );
+            await expect(vox.connect(accounts1).removeFromWhitelist(vox.address)).to.be.revertedWith(
+                "Caller does not have Admin Access"
+            );
+        });
     });
     describe("Functionality Tests", async () => {
         it("should not be able to mint NFT with same hash", async () => {
@@ -120,6 +134,19 @@ describe("VoxiesNFTEngine Test", async () => {
             console.log(
                 "Tokens held By User After Burn ",
                 (await vox.getHolderTokenIds(await accounts3.getAddress())).toString()
+            );
+        });
+        it("NFT should be transferrable to whitelisted contract only", async () => {
+            const newNFTHolder = await accounts1.getAddress();
+            const hash = "hash";
+            await vox.issueToken(newNFTHolder, hash);
+            await expect(
+                vox.connect(accounts1).transferFrom(newNFTHolder, vox.address, 1)
+            ).to.be.revertedWith("Contract Address is not whitelisted");
+            await vox.addToWhitelist(vox.address);
+            await expect(vox.connect(accounts1).transferFrom(newNFTHolder, vox.address, 1)).to.emit(
+                vox,
+                "Transfer"
             );
         });
     });
