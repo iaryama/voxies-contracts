@@ -69,6 +69,7 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
      * @param tokenId - NFT Id to Burn
      */
     function burn(uint256 tokenId) external {
+    require(ownerOf(tokenId) == msg.sender, "Caller Not the Owner Of NFT");
         _burn(tokenId);
     }
 
