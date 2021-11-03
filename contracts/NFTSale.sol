@@ -2,14 +2,24 @@
 pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
+interface INFTEngine {
+
+    function creatorOfNft(uint256 creator) external view returns(address);
+}
+
 // NFTSale SMART CONTRACT
 contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
     using Address for address;
+    using SafeERC20 for IERC20;
+
+    IERC20 public immutable voxel;
 
     address public immutable nftAddress;
     bool public isActive;
@@ -45,10 +55,11 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
         uint256 _timestamp
     );
 
-    constructor(address _nftAddress) {
+    constructor(address _nftAddress, IERC20 _voxel) {
         require(_nftAddress.isContract(), "_nftAddress must be a contract");
         __Ownable_init();
         nftAddress = _nftAddress;
+        voxel = _voxel;        
     }
 
     /**
@@ -214,7 +225,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
      *
      * @param nftId - nftId of the NFT
      */
-    function _purchaseNFT(uint256 nftId) private nonReentrant {
+    function _purchaseNFT(uint256 nftId) private {
         require(_nftSales[nftId].isActive, "NFT is not for sale");
         address payable seller = _nftSales[nftId].owner;
         address payable buyer = payable(_msgSender());
@@ -223,7 +234,9 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
         _nftSales[nftId].owner = buyer;
         _nftSales[nftId].isActive = false;
 
-        seller.transfer(price);
+        //transfer price of nft to seller
+        voxel.safeTransfer(seller, price);
+
         IERC721(nftAddress).safeTransferFrom(address(this), buyer, nftId);
 
         emit Sold(nftId, seller, buyer, price, block.timestamp);
@@ -234,9 +247,17 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
      *
      * @param nftId - nftId of the NFT
      */
-    function purchaseNFT(uint256 nftId) external payable {
+    function purchaseNFT(uint256 nftId, uint256 _amount) external nonReentrant {
         require(isActive, "Contract Status in not Active");
-        require(msg.value >= _nftSales[nftId].price, "value less than price of nft");
+        require(_amount >= _nftSales[nftId].price, "value less than price of nft");
+
+        voxel.safeTransferFrom(msg.sender, address(this), _amount);
+
+        if (_amount > _nftSales[nftId].price) {
+            uint256 extra_amount = _amount - _nftSales[nftId].price;
+            voxel.safeTransfer(msg.sender, extra_amount);
+        }  
+
         _purchaseNFT(nftId);
     }
 
@@ -245,7 +266,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
      *
      * @param nftIds - nftIds of the NFT
      */
-    function purchaseNFTBatch(uint256[] calldata nftIds) external payable {
+    function purchaseNFTBatch(uint256[] calldata nftIds, uint256 _amount) external nonReentrant {
         require(isActive, "Contract Status in not Active");
         uint256 totalPrice;
         for (uint256 i = 0; i < nftIds.length; i++) {
@@ -253,7 +274,14 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
             require(_nftSales[nftId].isActive, "One or more nfts requested in the batch purchase is not active");
             totalPrice = totalPrice + _nftSales[nftId].price;
         }
-        require(msg.value >= totalPrice, "value less than total price of nfts");
+        require(_amount >= totalPrice, "value less than total price of nfts");
+        voxel.safeTransferFrom(msg.sender, address(this), _amount);
+
+        if (_amount > totalPrice) {
+            uint256 extra_amount = _amount - totalPrice;
+            voxel.safeTransfer(msg.sender, extra_amount);
+        } 
+
         for (uint256 i = 0; i < nftIds.length; i++) {
             uint256 nftId = nftIds[i];
             _purchaseNFT(nftId);
