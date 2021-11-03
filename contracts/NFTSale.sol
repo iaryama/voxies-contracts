@@ -10,8 +10,7 @@ import { IERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 interface INFTEngine {
-
-    function creatorOfNft(uint256 creator) external view returns(address);
+    function creatorOfNft(uint256 creator) external view returns (address);
 }
 
 // NFTSale SMART CONTRACT
@@ -27,7 +26,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
     struct Sale {
         uint256 nftId;
         uint256 price;
-        address payable owner;
+        address owner;
         bool isActive;
         bool isCancelled;
     }
@@ -59,7 +58,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
         require(_nftAddress.isContract(), "_nftAddress must be a contract");
         __Ownable_init();
         nftAddress = _nftAddress;
-        voxel = _voxel;        
+        voxel = _voxel;
     }
 
     /**
@@ -104,7 +103,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
     function _sellNFT(
         uint256 nftId,
         uint256 price,
-        address payable artist,
+        address artist,
         address nftOwner
     ) private nonReentrant {
         require(!_nftSales[nftId].isActive, "NFT Sale is active");
@@ -124,8 +123,8 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
     function sellNFT(
         uint256 nftId,
         uint256 price,
-        address payable artist
-    ) public onlyAdmin {
+        address artist
+    ) external onlyAdmin {
         address nftOwner = IERC721(nftAddress).ownerOf(nftId);
         require(
             IERC721(nftAddress).getApproved(nftId) == address(this) ||
@@ -141,10 +140,10 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
      * @param nftId - nftId of the NFT
      * @param price - price to sell NFT for
      */
-    function sellMyNFT(uint256 nftId, uint256 price) public {
+    function sellMyNFT(uint256 nftId, uint256 price) external {
         address nftOwner = IERC721(nftAddress).ownerOf(nftId);
         require(nftOwner == _msgSender(), "Seller Not Owner of NFTs");
-        _sellNFT(nftId, price, payable(_msgSender()), nftOwner);
+        _sellNFT(nftId, price, (_msgSender()), nftOwner);
     }
 
     /**
@@ -157,7 +156,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
     function sellNFTBatch(
         uint256[] calldata nftIds,
         uint256[] calldata prices,
-        address payable artist
+        address artist
     ) external onlyAdmin {
         require(nftIds.length == prices.length, "nftIds and prices length mismatch");
         for (uint256 i = 0; i < nftIds.length; i++) {
@@ -193,7 +192,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
             uint256 nftId = nftIds[i];
             uint256 price = prices[i];
             address nftOwner = IERC721(nftAddress).ownerOf(nftId);
-            _sellNFT(nftId, price, payable(_msgSender()), nftOwner);
+            _sellNFT(nftId, price, (_msgSender()), nftOwner);
         }
     }
 
@@ -227,8 +226,8 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
      */
     function _purchaseNFT(uint256 nftId) private {
         require(_nftSales[nftId].isActive, "NFT is not for sale");
-        address payable seller = _nftSales[nftId].owner;
-        address payable buyer = payable(_msgSender());
+        address seller = _nftSales[nftId].owner;
+        address buyer = (_msgSender());
         uint256 price = _nftSales[nftId].price;
 
         _nftSales[nftId].owner = buyer;
@@ -251,12 +250,12 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
         require(isActive, "Contract Status in not Active");
         require(_amount >= _nftSales[nftId].price, "value less than price of nft");
 
-        voxel.safeTransferFrom(msg.sender, address(this), _amount);
+        voxel.safeTransferFrom(_msgSender(), address(this), _amount);
 
         if (_amount > _nftSales[nftId].price) {
             uint256 extra_amount = _amount - _nftSales[nftId].price;
-            voxel.safeTransfer(msg.sender, extra_amount);
-        }  
+            voxel.safeTransfer(_msgSender(), extra_amount);
+        }
 
         _purchaseNFT(nftId);
     }
@@ -275,12 +274,12 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
             totalPrice = totalPrice + _nftSales[nftId].price;
         }
         require(_amount >= totalPrice, "value less than total price of nfts");
-        voxel.safeTransferFrom(msg.sender, address(this), _amount);
+        voxel.safeTransferFrom(_msgSender(), address(this), _amount);
 
         if (_amount > totalPrice) {
             uint256 extra_amount = _amount - totalPrice;
-            voxel.safeTransfer(msg.sender, extra_amount);
-        } 
+            voxel.safeTransfer(_msgSender(), extra_amount);
+        }
 
         for (uint256 i = 0; i < nftIds.length; i++) {
             uint256 nftId = nftIds[i];
@@ -296,7 +295,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
      * @param nftId - id of the NFT
      * @param buyer - buyer of the NFT
      */
-    function releaseNFT(uint256 nftId, address payable buyer) external onlyAdmin nonReentrant {
+    function releaseNFT(uint256 nftId, address buyer) external onlyAdmin nonReentrant {
         require(_nftSales[nftId].isActive, "NFT is not for sale");
         address seller = _nftSales[nftId].owner;
 
