@@ -3,14 +3,17 @@ pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "./utils/AccessProtected.sol";
 
 contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected {
     using Counters for Counters.Counter;
+    using Address for address;
     Counters.Counter public _tokenIds;
     mapping(string => bool) public hashes;
+    mapping(address => bool) public whitelistedAddresses;
 
     constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) {}
 
@@ -20,7 +23,7 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
      * @param recipient - NFT will be issued to recipient
      * @param hash - Artwork Metadata IPFS hash
      */
-    function issueToken(address recipient,string memory hash) public onlyAdmin returns (uint256) {
+    function issueToken(address recipient, string memory hash) public onlyAdmin returns (uint256) {
         require(hashes[hash] == false, "NFT for hash already minted");
         hashes[hash] = true;
         _tokenIds.increment();
@@ -36,7 +39,7 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
      * @param recipient - NFT will be issued to recipient
      * @param _hashes - array of Artwork Metadata IPFS hash
      */
-    function issueBatch(address recipient,string[] memory _hashes) public onlyAdmin returns (uint256[] memory) {
+    function issueBatch(address recipient, string[] memory _hashes) public onlyAdmin returns (uint256[] memory) {
         uint256[] memory tokenIds = new uint256[](_hashes.length);
         for (uint256 i = 0; i < _hashes.length; i++) {
             uint256 tokenId = issueToken(recipient, _hashes[i]);
@@ -76,6 +79,48 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
         uint256 tokenId
     ) internal override(ERC721, ERC721Enumerable) {
         super._beforeTokenTransfer(from, to, tokenId);
+    }
+
+    /**
+     * Add contract addresses to the whitelist
+     */
+
+    function addToWhitelist(address _contractAddress) external onlyAdmin {
+        require(_contractAddress.isContract(), "Provided Address is not a contract");
+        whitelistedAddresses[_contractAddress] = true;
+    }
+
+    /**
+     * Remove a contract addresses from the whitelist
+     */
+
+    function removeFromWhitelist(address _contractAddress) external onlyAdmin {
+        require(_contractAddress.isContract(), "Provided Address is not a contract");
+        whitelistedAddresses[_contractAddress] = false;
+    }
+
+    /**
+     * Get the whitelisted status of a contract
+     */
+
+    function getWhitelistStatus(address _contractAddress) external view onlyAdmin returns (bool) {
+        require(_contractAddress.isContract(), "Provided Address is not a contract");
+        return whitelistedAddresses[_contractAddress];
+    }
+
+    /**
+     * Override transfer functionality
+     */
+
+    function _transfer(
+        address from,
+        address to,
+        uint256 tokenId
+    ) internal override(ERC721) {
+        if (to.isContract()) {
+            require(whitelistedAddresses[to], "Contract Address is not whitelisted");
+        }
+        super._transfer(from, to, tokenId);
     }
 
     /**
