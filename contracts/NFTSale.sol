@@ -248,15 +248,9 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
      */
     function purchaseNFT(uint256 nftId, uint256 _amount) external nonReentrant {
         require(isActive, "Contract Status in not Active");
-        require(_amount >= _nftSales[nftId].price, "value less than price of nft");
+        require(_amount == _nftSales[nftId].price, "value not equal to price of nft");
 
         voxel.safeTransferFrom(_msgSender(), address(this), _amount);
-
-        if (_amount > _nftSales[nftId].price) {
-            uint256 extra_amount = _amount - _nftSales[nftId].price;
-            voxel.safeTransfer(_msgSender(), extra_amount);
-        }
-
         _purchaseNFT(nftId);
     }
 
@@ -273,13 +267,8 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
             require(_nftSales[nftId].isActive, "One or more nfts requested in the batch purchase is not active");
             totalPrice = totalPrice + _nftSales[nftId].price;
         }
-        require(_amount >= totalPrice, "value less than total price of nfts");
+        require(_amount == totalPrice, "value not equal to price of nfts");
         voxel.safeTransferFrom(_msgSender(), address(this), _amount);
-
-        if (_amount > totalPrice) {
-            uint256 extra_amount = _amount - totalPrice;
-            voxel.safeTransfer(_msgSender(), extra_amount);
-        }
 
         for (uint256 i = 0; i < nftIds.length; i++) {
             uint256 nftId = nftIds[i];
