@@ -40,8 +40,9 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
      * @param _hashes - array of Artwork Metadata IPFS hash
      */
     function issueBatch(address recipient, string[] memory _hashes) public onlyAdmin returns (uint256[] memory) {
-        uint256[] memory tokenIds = new uint256[](_hashes.length);
-        for (uint256 i = 0; i < _hashes.length; i++) {
+        uint256 len = _hashes.length;
+        uint256[] memory tokenIds = new uint256[](len);
+        for (uint256 i = 0; i < len; i++) {
             uint256 tokenId = issueToken(recipient, _hashes[i]);
             tokenIds[i] = tokenId;
         }
@@ -56,8 +57,7 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
     function getHolderTokenIds(address holder) public view returns (uint256[] memory) {
         uint256 count = balanceOf(holder);
         uint256[] memory result = new uint256[](count);
-        uint256 index;
-        for (index = 0; index < count; index++) {
+        for (uint256 index = 0; index < count; index++) {
             result[index] = tokenOfOwnerByIndex(holder, index);
         }
         return result;
@@ -69,7 +69,7 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
      * @param tokenId - NFT Id to Burn
      */
     function burn(uint256 tokenId) external {
-    require(ownerOf(tokenId) == msg.sender, "Caller Not the Owner Of NFT");
+        require(ownerOf(tokenId) == msg.sender, "Caller Not the Owner Of NFT");
         _burn(tokenId);
     }
 
