@@ -251,6 +251,14 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
         emit RewardsAdded(_nftIds, _amounts);
     }
 
+    function getRewards(uint256 _loanId) internal view returns (uint256, uint256) {
+        uint256 loanerRewards = 0;
+        uint256 loaneeRewards = 0;
+        loanerRewards = loanItems[_loanId].earnedRewards.mul(loanItems[_loanId].percentageRewards).div(100);
+        loaneeRewards = loanItems[_loanId].earnedRewards.sub(loanerRewards);
+        return (loanerRewards, loaneeRewards);
+    }
+
     /**
      * Claim Rewards
      *
@@ -262,8 +270,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
         require(loanItems[_loanId].earnedRewards > 0, "No rewards found for given LoanId");
         uint256 loanerRewards = 0;
         uint256 loaneeRewards = 0;
-        loanerRewards = loanItems[_loanId].earnedRewards.mul(loanItems[_loanId].percentageRewards).div(100);
-        loaneeRewards = loanItems[_loanId].earnedRewards.sub(loanerRewards);
+        (loanerRewards, loaneeRewards) = getRewards(_loanId);
         loanItems[_loanId].earnedRewards = 0;
         token.safeTransfer(loanItems[_loanId].owner, loanerRewards);
         token.safeTransfer(loanItems[_loanId].loanee, loaneeRewards);
@@ -282,16 +289,21 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
             (block.timestamp - loanItems[_loanId].startingTime) >= loanItems[_loanId].timePeriod,
             "Loan period is still active "
         );
+        uint256 loanerRewards = 0;
+        uint256 loaneeRewards = 0;
+        if (loanItems[_loanId].earnedRewards > 0) {
+            require(loanItems[_loanId].earnedRewards > 0, "No rewards found for given LoanId");
+            (loanerRewards, loaneeRewards) = getRewards(_loanId);
+            loanItems[_loanId].earnedRewards = 0;
+        }
         for (uint256 i = 0; i < loanItems[_loanId].tokenIds.length; i++) {
             uint256 id = loanItems[_loanId].tokenIds[i];
             address nftAddress = loanItems[_loanId].nftAddress;
             _nftToBundleId[nftAddress][id] = 0;
-        }
-        if (loanItems[_loanId].earnedRewards > 0) claimRewards(_loanId);
-        for (uint256 i = 0; i < loanItems[_loanId].tokenIds.length; i++) {
-            uint256 id = loanItems[_loanId].tokenIds[i];
             IERC721(loanItems[_loanId].nftAddress).safeTransferFrom(address(this), loanItems[_loanId].owner, id);
         }
+        token.safeTransfer(loanItems[_loanId].owner, loanerRewards);
+        token.safeTransfer(loanItems[_loanId].loanee, loaneeRewards);
         delete loanItems[_loanId];
     }
 
