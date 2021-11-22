@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
-
 interface IVoxelNFT {
     function issueToken(
         uint256,
@@ -82,16 +81,12 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
 
         if (choicee == orderType) {
             return auctions[_nftId].highestBid;
-        }
-         else {
-            uint256 hoursPassed =  (block.timestamp - auctions[_nftId].startingTime)/3600;
+        } else {
             uint256 _startPrice = auctions[_nftId].startBid;
             uint256 _endPrice = auctions[_nftId].endBid;
             uint256 _startingTime = auctions[_nftId].startingTime;
             uint256 tickPerBlock = (_startPrice - _endPrice) / (auctions[_nftId].closingTime - _startingTime);
-            uint256 tickPerHour = (tickPerBlock *3600) ;
-            return _startPrice - ((hoursPassed) * tickPerHour);
-
+            return _startPrice - ((block.timestamp - _startingTime) * tickPerBlock);
         }
     }
 
@@ -157,7 +152,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         if (auctions[_nftId].closingTime - block.timestamp <= 600) {
             auctions[_nftId].closingTime += 60;
         }
-        
+
         voxel.safeTransferFrom(msg.sender, address(this), _amount);
         //transferring bid amount to previous highest bidder
         if (auctions[_nftId].originalOwner != auctions[_nftId].highestBidder) {
@@ -187,7 +182,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         auctions[_nftId].isSold = true;
 
         // transferring price to seller of nft
-        voxel.safeTransferFrom(msg.sender,seller, currentPrice);
+        voxel.safeTransferFrom(msg.sender, seller, currentPrice);
         //voxel.safeTransferFrom(msg.sender, address(this), _amount);
 
         //transferring nft to highest bidder
@@ -202,10 +197,10 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         require(auctions[_nftId].highestBidder == msg.sender, "You are not ower of this NFT");
 
         address seller = auctions[_nftId].originalOwner;
-    
+
         //sending price to seller of nft
         voxel.safeTransfer(seller, auctions[_nftId].highestBid);
-        
+
         //transferring nft to highest bidder
         nft_.safeTransferFrom(address(this), auctions[_nftId].highestBidder, _nftId);
         auctions[_nftId].isActive = false;
