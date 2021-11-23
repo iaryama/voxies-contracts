@@ -12,13 +12,13 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /** @title Loaning NFT. */
-contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
+contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Receiver {
     using SafeMath for uint256;
     using Address for address;
     using Counters for Counters.Counter;
     using SafeERC20 for IERC20;
 
-    Counters.Counter private _tokenIds;
+    Counters.Counter public _tokenIds;
 
     IERC20 public token;
 
@@ -26,12 +26,13 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
 
     uint256 public minLoanPeriod = 3600;
 
-    mapping(address => mapping(uint256 => uint256)) private _nftToBundleId;
+    // nftContract address to nftId to LoanableItemId
+    mapping(address => mapping(uint256 => uint256)) public _nftToBundleId;
 
     mapping(address => bool) public allowedNFT;
 
     struct LoanableItem {
-        address nftAddress;
+        address[] nftAddresses;
         address owner;
         address loanee;
         bool isActive;
@@ -39,19 +40,23 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
         uint256 upfrontFee;
         uint8 percentageRewards;
         uint256 timePeriod;
-        uint256 earnedRewards;
+        uint256 totalRewards;
+        uint256 loanerClaimedRewards;
+        uint256 loaneeClaimedRewards;
         uint256 startingTime;
     }
 
     mapping(uint256 => LoanableItem) public loanItems;
 
-    event LoanableItemCreated(address owner, uint256[] lockedNFT, uint256 itemId);
+    event LoanableItemCreated(address owner, address[] nftAddress, uint256[] lockedNFT, uint256 itemId);
 
     event LoanIssued(address loanee, uint256 loanId);
 
-    event RewardsAdded(uint256[] nftIds, uint256[] amounts);
+    event RewardsAdded(address[] nftAddress, uint256[] nftIds, uint256[] amounts);
 
-    event RewardsDisbursed(uint256 loanerRewards, uint256 loaneeRewards, uint256 loanId);
+    event RewardsClaimed(address claimer, uint256 rewards, uint256 loanId);
+
+    event NFTsClaimed(address[] nftAddress, uint256[] nftIds, address owner);
 
     constructor(address[] memory _nftAddresses, IERC20 _token) {
         require(address(_token) != address(0), "ZERO_ADDRESS");
@@ -70,6 +75,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
 
     function updateMaxTimePeriod(uint256 _timePeriod) external onlyAdmin {
         require(_timePeriod > 0, "Incorrect time period");
+        require(_timePeriod > minLoanPeriod);
         maxLoanPeriod = _timePeriod;
     }
 
@@ -81,6 +87,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
 
     function updateMinTimePeriod(uint256 _timePeriod) external onlyAdmin {
         require(_timePeriod > 0, "Incorrect time period");
+        require(_timePeriod < maxLoanPeriod);
         minLoanPeriod = _timePeriod;
     }
 
@@ -114,22 +121,26 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
      * @param _nftAddress - ERC721 contract address
      * @param _nftId - NFT id
      */
-
-    function _hasAccess(address _nftAddress, uint256 _nftId) internal view returns (bool) {
+    function hasAccessToNFT(
+        address _nftAddress,
+        uint256 _nftId,
+        address _owner
+    ) external view returns (bool) {
         require(allowedNFT[_nftAddress], "NFT contract address is not allowed");
         require(_nftToBundleId[_nftAddress][_nftId] > 0, "NFT is not bundled as a Loanable Item");
         uint256 loanId = _nftToBundleId[_nftAddress][_nftId];
-        if (loanItems[loanId].isActive) {
-            return (_msgSender() == loanItems[loanId].loanee);
+        require(loanItems[loanId].owner != address(0), "Loanable Item Not Found");
+        if (block.timestamp.sub(loanItems[loanId].startingTime) <= loanItems[loanId].timePeriod) {
+            return (_owner == loanItems[loanId].loanee);
         } else {
-            return (_msgSender() == loanItems[loanId].owner);
+            return (_owner == loanItems[loanId].owner);
         }
     }
 
     /**
      * Listing a Loanable item
      *
-     * @param _nftAddress - ERC721 contract address
+     * @param _nftAddresses - ERC721 contract addresses
      * @param _nftIds - List of NFT ids
      * @param _upfrontFee - Upfront fee to loan item
      * @param _percentageRewards - Percentage of earned rewards
@@ -137,34 +148,35 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
      */
 
     function createLoanableItem(
-        address _nftAddress,
+        address[] calldata _nftAddresses,
         uint256[] calldata _nftIds,
         uint256 _upfrontFee,
         uint8 _percentageRewards,
         uint256 _timePeriod
     ) external nonReentrant returns (uint256) {
-        require(allowedNFT[_nftAddress], "NFT contract address is not allowed");
+        require(_nftAddresses.length == _nftIds.length, "_nftAddresses.length != _nftIds.length");
         require(_nftIds.length > 0, "Atleast one NFT should be part of loanable Item");
         require(_percentageRewards < 100, "Percentage cannot be more than 100");
         require(_timePeriod >= minLoanPeriod && _timePeriod <= maxLoanPeriod, "Incorrect loan time period specified");
         for (uint256 i = 0; i < _nftIds.length; i++) {
-            require(_nftToBundleId[_nftAddress][_nftIds[i]] == 0, "Loan Bundle exits with the given NFT");
-            address nftOwner = IERC721(_nftAddress).ownerOf(_nftIds[i]);
+            require(allowedNFT[_nftAddresses[i]], "NFT contract address is not allowed");
+            require(_nftToBundleId[_nftAddresses[i]][_nftIds[i]] == 0, "Loan Bundle exits with the given NFT");
+            address nftOwner = IERC721(_nftAddresses[i]).ownerOf(_nftIds[i]);
             require(_msgSender() == nftOwner, "Sender is not the owner of given NFT");
         }
         _tokenIds.increment();
         uint256 newTokenId = _tokenIds.current();
-        loanItems[newTokenId].nftAddress = _nftAddress;
+        loanItems[newTokenId].nftAddresses = _nftAddresses;
         loanItems[newTokenId].owner = _msgSender();
         loanItems[newTokenId].tokenIds = _nftIds;
         loanItems[newTokenId].upfrontFee = _upfrontFee;
         loanItems[newTokenId].percentageRewards = _percentageRewards;
         loanItems[newTokenId].timePeriod = _timePeriod;
         for (uint256 i = 0; i < _nftIds.length; i++) {
-            _nftToBundleId[_nftAddress][_nftIds[i]] = newTokenId;
-            IERC721(_nftAddress).transferFrom(_msgSender(), address(this), _nftIds[i]);
+            _nftToBundleId[_nftAddresses[i]][_nftIds[i]] = newTokenId;
+            IERC721(_nftAddresses[i]).safeTransferFrom(_msgSender(), address(this), _nftIds[i]);
         }
-        emit LoanableItemCreated(_msgSender(), _nftIds, newTokenId);
+        emit LoanableItemCreated(_msgSender(), _nftAddresses, _nftIds, newTokenId);
         return newTokenId;
     }
 
@@ -209,6 +221,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
      * @param _loanId - Id of the loanable item
      */
 
+    //Not needed for now.
     function loanItem(uint256 _loanId) external nonReentrant {
         require(loanItems[_loanId].owner != address(0), "Loanable Item Not Found");
         require(_msgSender() != loanItems[_loanId].owner, "loaner cannot be loanee");
@@ -225,38 +238,42 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
     /**
      * Admin can Add Rewards on NFTs
      *
-     * @param _nftAddress - ERC721 contract address
+     * @param _nftAddresses - ERC721 contract addresses
      * @param _nftIds - List of NFT ids
      * @param _amounts - List of Amounts.
      */
 
     function addRewardsForNFT(
-        address _nftAddress,
-        uint256[] memory _nftIds,
-        uint256[] memory _amounts
+        address[] calldata _nftAddresses,
+        uint256[] calldata _nftIds,
+        uint256[] calldata _amounts
     ) external onlyAdmin nonReentrant {
+        require(_nftAddresses.length == _nftIds.length, "_nftAddresses.length != _nftIds.length");
         require(_nftIds.length > 0, "Invalid number of NFTs");
         require(_nftIds.length == _amounts.length, "winners.length != _amounts.length");
-        require(allowedNFT[_nftAddress], "Cannot accept tokens from the given NFT contract address");
         for (uint256 i = 0; i < _nftIds.length; i++) {
-            uint256 _loanId = _nftToBundleId[_nftAddress][_nftIds[i]];
+            require(allowedNFT[_nftAddresses[i]], "Cannot accept tokens from the given NFT contract address");
+            uint256 _loanId = _nftToBundleId[_nftAddresses[i]][_nftIds[i]];
             require(loanItems[_loanId].owner != address(0), "Loanable Item Not Found");
-            if (loanItems[_loanId].isActive) {
-                loanItems[_loanId].earnedRewards = loanItems[_loanId].earnedRewards.add(_amounts[i]);
+            if (block.timestamp.sub(loanItems[_loanId].startingTime) <= loanItems[_loanId].timePeriod) {
+                loanItems[_loanId].totalRewards = loanItems[_loanId].totalRewards.add(_amounts[i]);
                 token.safeTransferFrom(_msgSender(), address(this), _amounts[i]);
             } else {
                 token.safeTransferFrom(_msgSender(), loanItems[_loanId].owner, _amounts[i]);
             }
         }
-        emit RewardsAdded(_nftIds, _amounts);
+        emit RewardsAdded(_nftAddresses, _nftIds, _amounts);
     }
 
-    function getRewards(uint256 _loanId) internal view returns (uint256, uint256) {
-        uint256 loanerRewards = 0;
-        uint256 loaneeRewards = 0;
-        loanerRewards = loanItems[_loanId].earnedRewards.mul(loanItems[_loanId].percentageRewards).div(100);
-        loaneeRewards = loanItems[_loanId].earnedRewards.sub(loanerRewards);
-        return (loanerRewards, loaneeRewards);
+    function getLoaneeRewards(uint256 _loanId) internal view returns (uint256) {
+        uint256 loanerRewards = loanItems[_loanId].totalRewards.mul(loanItems[_loanId].percentageRewards).div(100);
+        uint256 loaneeRewards = loanItems[_loanId].totalRewards.sub(loanerRewards);
+        return loaneeRewards.sub(loanItems[_loanId].loaneeClaimedRewards);
+    }
+
+    function getLoanerRewards(uint256 _loanId) internal view returns (uint256) {
+        uint256 loanerRewards = loanItems[_loanId].totalRewards.mul(loanItems[_loanId].percentageRewards).div(100);
+        return loanerRewards.sub(loanItems[_loanId].loanerClaimedRewards);
     }
 
     /**
@@ -265,16 +282,19 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
      * @param _loanId - Id of the loaned item
      *
      */
+
     function claimRewards(uint256 _loanId) public nonReentrant {
         require(_msgSender() == loanItems[_loanId].owner || _msgSender() == loanItems[_loanId].loanee);
-        require(loanItems[_loanId].earnedRewards > 0, "No rewards found for given LoanId");
-        uint256 loanerRewards = 0;
-        uint256 loaneeRewards = 0;
-        (loanerRewards, loaneeRewards) = getRewards(_loanId);
-        loanItems[_loanId].earnedRewards = 0;
-        token.safeTransfer(loanItems[_loanId].owner, loanerRewards);
-        token.safeTransfer(loanItems[_loanId].loanee, loaneeRewards);
-        emit RewardsDisbursed(loanerRewards, loaneeRewards, _loanId);
+        require(loanItems[_loanId].totalRewards > 0, "No rewards found for given LoanId");
+        if (_msgSender() == loanItems[_loanId].owner) {
+            uint256 loanerRewards = getLoanerRewards(_loanId);
+            token.safeTransfer(loanItems[_loanId].owner, loanerRewards);
+            emit RewardsClaimed(_msgSender(), loanerRewards, _loanId);
+        } else {
+            uint256 loaneeRewards = getLoaneeRewards(_loanId);
+            token.safeTransfer(loanItems[_loanId].loanee, loaneeRewards);
+            emit RewardsClaimed(_msgSender(), loaneeRewards, _loanId);
+        }
     }
 
     /**
@@ -286,25 +306,15 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
     function claimNFTs(uint256 _loanId) external nonReentrant {
         require(_msgSender() == loanItems[_loanId].owner, "Sender is not the owner of NFTs");
         require(
-            (block.timestamp - loanItems[_loanId].startingTime) >= loanItems[_loanId].timePeriod,
+            block.timestamp.sub(loanItems[_loanId].startingTime) >= loanItems[_loanId].timePeriod,
             "Loan period is still active "
         );
-        uint256 loanerRewards = 0;
-        uint256 loaneeRewards = 0;
-        if (loanItems[_loanId].earnedRewards > 0) {
-            require(loanItems[_loanId].earnedRewards > 0, "No rewards found for given LoanId");
-            (loanerRewards, loaneeRewards) = getRewards(_loanId);
-            loanItems[_loanId].earnedRewards = 0;
-        }
         for (uint256 i = 0; i < loanItems[_loanId].tokenIds.length; i++) {
             uint256 id = loanItems[_loanId].tokenIds[i];
-            address nftAddress = loanItems[_loanId].nftAddress;
+            address nftAddress = loanItems[_loanId].nftAddresses[i];
             _nftToBundleId[nftAddress][id] = 0;
-            IERC721(loanItems[_loanId].nftAddress).safeTransferFrom(address(this), loanItems[_loanId].owner, id);
+            IERC721(loanItems[_loanId].nftAddresses[i]).safeTransferFrom(address(this), loanItems[_loanId].owner, id);
         }
-        token.safeTransfer(loanItems[_loanId].owner, loanerRewards);
-        token.safeTransfer(loanItems[_loanId].loanee, loaneeRewards);
-        delete loanItems[_loanId];
     }
 
     modifier isNFTOwner(address nftAddress, uint256[] calldata tokenIds) {
@@ -321,5 +331,14 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient {
 
     function _msgSender() internal view override(Context, BaseRelayRecipient) returns (address) {
         return BaseRelayRecipient._msgSender();
+    }
+
+    function onERC721Received(
+        address operator,
+        address from,
+        uint256 tokenId,
+        bytes calldata data
+    ) external override returns (bytes4) {
+        return this.onERC721Received.selector;
     }
 }
