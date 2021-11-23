@@ -39,10 +39,10 @@ describe("Loaning Tests", async () => {
     });
     describe("Access Tests", async () => {
         it("owner should be able to add allowed NFT", async () => {
-            expect(loan.updateAllowedNFT(voxel.address, true));
+            expect(loan.allowNFTContract(voxel.address, true));
         });
         it("only owner should be able to add allowed NFT", async () => {
-            expect(loan.connect(accounts1).updateAllowedNFT(voxel.address, true)).to.be.revertedWith(
+            expect(loan.connect(accounts1).allowNFTContract(voxel.address, true)).to.be.revertedWith(
                 "Caller does not have Admin Access"
             );
         });
@@ -56,7 +56,7 @@ describe("Loaning Tests", async () => {
         let nftIds: BigNumber[];
         beforeEach(async () => {
             const nftOwner = await accounts1.getAddress();
-            expect(loan.updateAllowedNFT(vox.address, true));
+            expect(loan.allowNFTContract(vox.address, true));
             const hash = "some-hash";
             nftIds = [];
             nftAddresses = [];
@@ -450,15 +450,10 @@ describe("Loaning Tests", async () => {
                 expect(loan.connect(accounts2).loanItem(_loanId)).to.be.revertedWith(
                     "Loan Item is already loaned"
                 );
-                expect(loan.connect(owner).addRewardsForNFT(nftAddresses, nftIds2, amounts));
+                expect(
+                    loan.connect(owner).addRewardsForNFT(nftAddresses, nftIds2, amounts)
+                ).to.be.revertedWith("Loanable Item Not Found");
             });
         });
     });
-    // it("should have correct token address", async () => {
-    //     const tokenAddress = await loan.token;
-    //     expect(tokenAddress).to.be.equal(voxel.address);
-    // });
-    // it("should have correct symbol", async () => {
-    //     expect(await vox.symbol()).eq("VOX");
-    // });
 });
