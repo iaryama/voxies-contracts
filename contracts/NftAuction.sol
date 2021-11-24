@@ -1,9 +1,15 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import { IERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+import "./utils/AccessProtected.sol";
+import "./utils/BaseRelayRecipient.sol";
 
 interface IVoxelNFT {
     function issueToken(
@@ -27,8 +33,12 @@ interface IVoxelNFT {
     ) external;
 }
 
-contract NftAuction is IERC721Receiver, ReentrancyGuard {
+contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRelayRecipient {
+    using Address for address;
+    using Counters for Counters.Counter;
+
     struct Auction {
+        uint256 auctionID;
         AuctionType orderType;
         uint256 highestBid;
         uint256 startBid;
@@ -39,7 +49,15 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         address originalOwner;
         bool isActive;
         bool isSold;
+        uint256 nftCount;
+        address[] nftAddresses;
+        uint256[] tokenIDs; // Corresponding tokenIDs to above NFT addresses.
     }
+
+    mapping(address => mapping(uint256 => uint256)) private _nftToAuctionId; // NFT contract Address -> TokenID -> AuctionID
+    mapping(address => bool) public allowedNFTAddresses; // Whitelisted NFT contract addresses
+
+    Counters.Counter public _auctionIds;
 
     enum AuctionType {
         dutchAuction,
@@ -51,16 +69,16 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
     mapping(uint256 => Auction) public auctions;
 
     IERC20 public immutable voxel;
-    IVoxelNFT public immutable nft_;
     using SafeERC20 for IERC20;
     uint256 public balances;
 
     event NewAuctionOpened(
         AuctionType indexed orderType,
-        uint256 indexed nftId,
+        address[] indexed nftAddresses,
+        uint256[] indexed nftIds,
         uint256 startingBid,
         uint256 closingTime,
-        address indexed originalOwner
+        address originalOwner
     );
 
     event EnglishAuctionClosed(uint256 indexed nftId, uint256 highestBid, address indexed highestBidder);
@@ -71,8 +89,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
 
     event AuctionCancelled(uint256 indexed nftId, address indexed cancelledBy);
 
-    constructor(IERC20 _voxel, IVoxelNFT _nft) {
-        nft_ = _nft;
+    constructor(IERC20 _voxel) {
         voxel = _voxel;
     }
 
@@ -91,52 +108,80 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
     }
 
     function startDutchAuction(
-        uint256 _nftId,
+        address[] calldata _nftAddresses,
+        uint256[] calldata _nftIds,
         uint256 _startPrice,
         uint256 _endBid,
         uint256 _duration
     ) external {
         require(_startPrice > _endBid, "End price should be lower than start price");
         choice = AuctionType.dutchAuction;
-        openAuction(choice, _nftId, _startPrice, _endBid, _duration);
+        openAuction(choice, _nftAddresses, _nftIds, _startPrice, _endBid, _duration);
     }
 
     function startEnglishAuction(
-        uint256 _nftId,
+        address[] calldata _nftAddresses,
+        uint256[] calldata _nftIds,
         uint256 _startPrice,
         uint256 _duration
     ) external {
         choice = AuctionType.englishAuction;
-        openAuction(choice, _nftId, _startPrice, 0, _duration);
+        openAuction(choice, _nftAddresses, _nftIds, _startPrice, 0, _duration);
     }
 
     function openAuction(
         AuctionType _orderType,
-        uint256 _nftId,
+        address[] calldata _nftAddresses,
+        uint256[] calldata _nftIds,
         uint256 _initialBid,
         uint256 _endBid,
         uint256 _duration
-    ) private nonReentrant {
-        require(auctions[_nftId].isActive == false, "Ongoing auction detected");
+    ) private nonReentrant returns (uint256) {
+        //require(auctions[_nftId].isActive == false, "Ongoing auction detected");
+        require(_nftAddresses.length == _nftIds.length, "call data not of same length");
+        require(_nftIds.length > 0, "Atleast one NFT should be specified");
         require(_duration > 0 && _initialBid > 0, "Invalid input");
-        require(nft_.ownerOf(_nftId) == msg.sender, "Not NFT owner");
-        auctions[_nftId].orderType = _orderType;
-        auctions[_nftId].startBid = _initialBid;
-        auctions[_nftId].endBid = _endBid;
-        auctions[_nftId].startingTime = block.timestamp;
-        auctions[_nftId].closingTime = block.timestamp + _duration;
-        auctions[_nftId].highestBid = _initialBid;
-        auctions[_nftId].highestBidder = msg.sender;
-        auctions[_nftId].originalOwner = msg.sender;
-        auctions[_nftId].isActive = true;
-        nft_.safeTransferFrom(msg.sender, address(this), _nftId);
+        //require(nft_.ownerOf(_nftId) == msg.sender, "Not NFT owner");
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            require(allowedNFTAddresses[_nftAddresses[i]], "NFT contract address is not allowed");
+            require(
+                _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] == 0,
+                "An auction Bundle exists with one of the given NFT"
+            );
+            address memory nftOwner = IERC721(_nftAddresses[i]).ownerOf(_nftIds[i]);
+            require(_msgSender() == nftOwner, "Sender is not the owner of given NFT");
+        }
+
+        _auctionIds.increment();
+        uint256 newAuctionId = _auctionIds.current();
+        auctions[newAuctionId].auctionID = newAuctionId;
+        auctions[newAuctionId].orderType = _orderType;
+        auctions[newAuctionId].startBid = _initialBid;
+        auctions[newAuctionId].endBid = _endBid;
+        auctions[newAuctionId].startingTime = block.timestamp;
+        auctions[newAuctionId].closingTime = block.timestamp + _duration;
+        auctions[newAuctionId].highestBid = _initialBid;
+        auctions[newAuctionId].highestBidder = msg.sender;
+        auctions[newAuctionId].originalOwner = msg.sender;
+        auctions[newAuctionId].isActive = true;
+        auctions[newAuctionId].nftCount = _nftIds.length;
+        auctions[newAuctionId].nftAddresses = _nftAddresses;
+        auctions[newAuctionId].tokenIDs = _nftIds;
+
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] = newAuctionId;
+            IERC721(_nftAddresses[i]).safeTransferFrom(_msgSender(), address(this), _nftIds[i]);
+        }
+
         emit NewAuctionOpened(
             _orderType,
-            _nftId,
+            _nftAddresses,
+            _nftIds,
             auctions[_nftId].startBid,
             auctions[_nftId].closingTime,
             auctions[_nftId].originalOwner
         );
+        return newAuctionId;
     }
 
     function placeBidInEnglishAuction(
@@ -226,5 +271,13 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         bytes calldata data
     ) external override returns (bytes4) {
         return this.onERC721Received.selector;
+    }
+
+    function setTrustedForwarder(address _trustedForwarder) external onlyAdmin {
+        trustedForwarder = _trustedForwarder;
+    }
+
+    function _msgSender() internal view override(Context, BaseRelayRecipient) returns (address) {
+        return BaseRelayRecipient._msgSender();
     }
 }
