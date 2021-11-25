@@ -93,6 +93,11 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         voxel = _voxel;
     }
 
+    function setNFTContractStatus(address _nftAddress, bool _enabled) external onlyAdmin {
+        require(_nftAddress.isContract(), "Given NFT Address must be a contract");
+        allowedNFT[_nftAddress] = _enabled;
+    }
+
     function getCurrentPrice(uint256 _auctionId, AuctionType orderType) public view returns (uint256) {
         AuctionType choicee = AuctionType.englishAuction;
 
