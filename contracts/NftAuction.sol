@@ -95,7 +95,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
 
     function setNFTContractStatus(address _nftAddress, bool _enabled) external onlyAdmin {
         require(_nftAddress.isContract(), "Given NFT Address must be a contract");
-        allowedNFT[_nftAddress] = _enabled;
+        allowedNFTAddresses[_nftAddress] = _enabled;
     }
 
     function getCurrentPrice(uint256 _auctionId, AuctionType orderType) public view returns (uint256) {
@@ -118,10 +118,10 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         uint256 _startPrice,
         uint256 _endBid,
         uint256 _duration
-    ) external {
+    ) external returns (uint256) {
         require(_startPrice > _endBid, "End price should be lower than start price");
         choice = AuctionType.dutchAuction;
-        openAuction(choice, _nftAddresses, _nftIds, _startPrice, _endBid, _duration);
+        return openAuction(choice, _nftAddresses, _nftIds, _startPrice, _endBid, _duration);
     }
 
     function startEnglishAuction(
@@ -129,9 +129,9 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         uint256[] calldata _nftIds,
         uint256 _startPrice,
         uint256 _duration
-    ) external {
+    ) external returns (uint256) {
         choice = AuctionType.englishAuction;
-        openAuction(choice, _nftAddresses, _nftIds, _startPrice, 0, _duration);
+        return openAuction(choice, _nftAddresses, _nftIds, _startPrice, 0, _duration);
     }
 
     function openAuction(
