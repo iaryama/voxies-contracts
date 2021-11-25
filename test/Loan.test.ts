@@ -11,6 +11,7 @@ import {
     VoxiesNFTEngine,
 } from "../typechain";
 import { expect } from "chai";
+import { string } from "hardhat/internal/core/params/argumentTypes";
 
 describe("Loaning Tests", async () => {
     let owner: Signer,
@@ -130,7 +131,8 @@ describe("Loaning Tests", async () => {
                 ownerAddress: string,
                 account2Address: string,
                 account1Address: string,
-                account3Address: string;
+                account3Address: string,
+                loanId2: BigNumber;
             const createLoanableItemParams = async (
                 account: Signer,
                 _nftIds: BigNumber[],
@@ -195,6 +197,62 @@ describe("Loaning Tests", async () => {
                     await vox.connect(owner).approve(loan.address, nftId);
                     nftIds3.push(nftId);
                 }
+            });
+            it("loaner can create a reservable loan Item", async () => {
+                loanId2 = await loan
+                    .connect(accounts3)
+                    .callStatic.createLoanableItem(
+                        nftAddresses,
+                        nftIds2,
+                        100,
+                        13,
+                        60480,
+                        await accounts4.getAddress(),
+                        1
+                    );
+                await expect(
+                    loan
+                        .connect(accounts3)
+                        .createLoanableItem(
+                            nftAddresses,
+                            nftIds2,
+                            100,
+                            13,
+                            60480,
+                            await accounts4.getAddress(),
+                            1
+                        )
+                )
+                    .to.emit(loan, "LoanableItemCreated")
+                    .withArgs(
+                        account3Address,
+                        nftAddresses,
+                        nftIds2,
+                        loanId2,
+                        await accounts4.getAddress(),
+                        1
+                    );
+            });
+            it("update reserve on an inactive loan", async () => {
+                await loan.connect(accounts3).reserveLoanItem(loanId2, await accounts5.getAddress());
+                const reservedTo = (await loan.loanItems(loanId2)).reservedTo.toString();
+                expect(reservedTo).to.be.equal(await accounts5.getAddress());
+            });
+            it("Reserved loan cannot be issued to other loaner", async () => {
+                await expect(loan.connect(accounts2).loanItem(loanId2)).to.be.revertedWith(
+                    "Private loan can only be issued to reserved user"
+                );
+            });
+            it("should be able to loan reserved loan ", async () => {
+                await voxel.connect(owner).transfer(await accounts5.getAddress(), 1000);
+                await voxel.connect(accounts5).approve(loan.address, 1000);
+                await loan.connect(accounts5).loanItem(loanId2);
+                expect((await loan.loanItems(loanId2)).loanee).to.be.equal(await accounts5.getAddress());
+            });
+            it("Should not update reservedTo on an active loan", async () => {
+                await expect(
+                    loan.connect(accounts3).reserveLoanItem(loanId2, await accounts5.getAddress())
+                ).to.be.revertedWith("Cannot reserve an active loan item");
             });
             it("revert on nft use for second loan bundle", async () => {
                 expect(
@@ -312,16 +370,20 @@ describe("Loaning Tests", async () => {
                 expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1015);
             });
             it("loaner cannot claim NFTs over active loan period", async () => {
-                expect(loan.connect(accounts3).claimNFTs(loanId)).to.be.revertedWith(
+                expect(loan.connect(accounts1).claimNFTs(loanId)).to.be.revertedWith(
                     "Loan period is still active"
                 );
             });
             it("loaner can claim NFTs after active loan period", async () => {
+                for (var i = 0; i < nftIds.length; i++) {
+                    expect((await vox.ownerOf(nftIds[i])).toString()).to.be.equal(loan.address);
+                }
                 await network.provider.send("evm_increaseTime", [604800]);
                 await network.provider.send("evm_mine");
                 await expect(loan.connect(accounts1).claimNFTs(loanId)).to.emit(loan, "NFTsClaimed");
                 for (var i = 0; i < nftIds.length; i++) {
-                    expect((await vox.ownerOf(nftIds[i])).toString()).to.be.equal(account1Address.toString());
+                    var nftOwner = await vox.ownerOf(nftIds[i]);
+                    expect(nftOwner).to.be.equal(account1Address);
                 }
             });
             it("loaner or loanne can claim NFT rewards", async () => {
@@ -351,3 +413,4 @@ describe("Loaning Tests", async () => {
         });
     });
 });
+0;
