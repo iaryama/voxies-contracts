@@ -410,6 +410,32 @@ describe("Loaning Tests", async () => {
                 );
                 expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1015);
             });
+            it("Testing pending rewards and contract balances", async () => {
+                for (var i = 1; i < 200; i++) {
+                    await voxel.approve(loan.address, BigNumber.from(99000000 * i));
+                    await expect(loan.connect(owner).addERC20Rewards(loanId, BigNumber.from(99000000 * i)))
+                        .to.emit(loan, "ERC20RewardsAdded")
+                        .withArgs(loanId, BigNumber.from(99000000 * i));
+                    await expect(loan.connect(accounts1).claimERC20Rewards(loanId)).to.emit(
+                        loan,
+                        "ERC20RewardsClaimed"
+                    );
+                    await expect(loan.connect(accounts2).claimERC20Rewards(loanId)).to.emit(
+                        loan,
+                        "ERC20RewardsClaimed"
+                    );
+                    const totalRewards = (await loan.loanItems(loanId)).totalRewards;
+                    const loanerClaimedRewards = (
+                        await loan.loanItems(loanId)
+                    ).loanerClaimedRewards.toNumber();
+                    const loaneeClaimedRewards = (
+                        await loan.loanItems(loanId)
+                    ).loaneeClaimedRewards.toNumber();
+                    expect((await voxel.balanceOf(loan.address)).toNumber()).to.be.equal(
+                        totalRewards.toNumber() - loanerClaimedRewards - loaneeClaimedRewards
+                    );
+                }
+            });
             it("loaner cannot claim NFTs over active loan period", async () => {
                 expect(loan.connect(accounts1).claimNFTs(loanId)).to.be.revertedWith(
                     "Loan period is still active"
