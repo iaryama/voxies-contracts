@@ -474,7 +474,7 @@ describe("Loaning Tests", async () => {
                     "Loan Item is already loaned"
                 );
                 expect(loan.connect(owner).addERC20Rewards(loanId, 100)).to.be.revertedWith(
-                    "Loanable Item Not Found"
+                    "Inactive loan item"
                 );
             });
         });
