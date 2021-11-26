@@ -1,4 +1,4 @@
-pragma solidity 0.8.4;
+pragma experimental ABIEncoderV2;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -192,9 +192,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
         }
         _loanIds.increment();
         uint256 newLoanId = _loanIds.current();
-        loanItems[newLoanId].nftAddresses = _nftAddresses;
         loanItems[newLoanId].owner = _msgSender();
-        loanItems[newLoanId].tokenIds = _nftIds;
         loanItems[newLoanId].upfrontFee = _upfrontFee;
         loanItems[newLoanId].percentageRewards = _percentageRewards;
         loanItems[newLoanId].timePeriod = _timePeriod;
@@ -204,6 +202,8 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
         }
         for (uint256 i = 0; i < _nftIds.length; i++) {
             _nftToBundleId[_nftAddresses[i]][_nftIds[i]] = newLoanId;
+            loanItems[newLoanId].nftAddresses.push(_nftAddresses[i]);
+            loanItems[newLoanId].tokenIds.push(_nftIds[i]);
             IERC721(_nftAddresses[i]).safeTransferFrom(_msgSender(), address(this), _nftIds[i]);
         }
         emit LoanableItemCreated(_msgSender(), _nftAddresses, _nftIds, newLoanId, _reservedTo, _claimer);
@@ -337,6 +337,26 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
             IERC721(nftAddress).safeTransferFrom(_msgSender(), address(this), nftId);
         }
         emit NFTRewardsAdded(_loanId, _nftAddresses, _nftIds);
+    }
+
+    /**
+     * Get Bundled NFTs
+     *
+     * @param _loanId - Id of the loaned item
+     *
+     */
+    function getBundledNFTs(uint256 _loanId) public view returns (address[] memory, uint256[] memory) {
+        return (loanItems[_loanId].nftAddresses, loanItems[_loanId].tokenIds);
+    }
+
+    /**
+     * Get NFT Rewards
+     *
+     * @param _loanId - Id of the loaned item
+     *
+     */
+    function getNFTRewards(uint256 _loanId) public view returns (address[] memory, uint256[] memory) {
+        return (loanItems[_loanId].nftRewardContracts, loanItems[_loanId].nftRewards);
     }
 
     /**
