@@ -125,6 +125,11 @@ describe("Loaning Tests", async () => {
                 .to.emit(loan, "LoanableItemCreated")
                 .withArgs(ownerAddress, nftAddresses, nftIds, loanId, nullAddress, 0);
         });
+        it("should not be able to withdraw bundled nft's", async () => {
+            await expect(loan.connect(owner).withdrawNFTs(nftAddresses, nftIds)).to.be.revertedWith(
+                "Cannot withdraw from loaned bundles"
+            );
+        });
         describe("Loaning, Rewarding Listed Loan Items", async () => {
             let nftIds2: BigNumber[],
                 nftIds3: BigNumber[],
@@ -332,6 +337,42 @@ describe("Loaning Tests", async () => {
                 for (var i = 0; i < nftIds3.length; i++) {
                     expect((await vox.ownerOf(nftIds3[i])).toString()).to.be.equal(loan.address.toString());
                 }
+            });
+            it("should not be able to withdraw rewarded nft's", async () => {
+                await expect(loan.connect(owner).withdrawNFTs(nftAddresses, nftIds3)).to.be.revertedWith(
+                    "Cannot withdraw from loaned bundles"
+                );
+            });
+            it("should be able to withdraw nft's which are not bundled", async () => {
+                const vox1 = await voxelEngine.deploy("VoxelNFT", "VOX");
+                var _hashes = [];
+                var _nftIds = [];
+                var _nftAddresses = [];
+                for (var i = 1; i <= 10; i++) {
+                    const hash = `ipfs-hash-user1-${i}`;
+                    _hashes.push(hash);
+                    const nftId = await vox1.callStatic.issueToken(loan.address, hash);
+                    await vox1.issueToken(loan.address, hash);
+                    _nftIds.push(nftId);
+                    _nftAddresses.push(vox1.address);
+                }
+                await loan.connect(owner).withdrawNFTs(_nftAddresses, _nftIds);
+                for (var i = 0; i < _nftIds.length; i++) {
+                    var nftOwner = await vox1.ownerOf(_nftIds[i]);
+                    expect(nftOwner).to.be.equal(ownerAddress);
+                }
+            });
+            it("should be able to withdraw erc20 other than voxel", async () => {
+                const voxel1 = await voxelFactory.deploy();
+                await voxel1.connect(owner).transfer(loan.address, 100);
+                const balance = await (await voxel1.balanceOf(ownerAddress)).toBigInt();
+                await loan.connect(owner).withdrawERC20(voxel1.address);
+                expect((await voxel1.balanceOf(ownerAddress)).toBigInt()).to.be.equal(balance + BigInt(100));
+            });
+            it("shouldnot be able to withdraw voxel tokens", async () => {
+                expect(loan.connect(owner).withdrawERC20(voxel.address)).to.be.revertedWith(
+                    "Cannot withdraw Voxel tokens"
+                );
             });
             it("loaner can claim rewards", async () => {
                 await expect(loan.connect(owner).addERC20Rewards(loanId, 10))

@@ -108,7 +108,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
      * @param _timePeriod - epoch time value
      */
 
-    function updateMinTimeNFTRewardsClaimerPeriod(uint256 _timePeriod) external onlyAdmin {
+    function updateMinTimePeriod(uint256 _timePeriod) external onlyAdmin {
         require(_timePeriod > 0, "Incorrect time period");
         require(_timePeriod < maxLoanPeriod);
         minLoanPeriod = _timePeriod;
@@ -331,6 +331,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
             address nftAddress = _nftAddresses[i];
             uint256 nftId = _nftIds[i];
             require(_nftToBundleId[nftAddress][nftId] == 0, "Bundled NFT cannot be added as rewards");
+            _nftToBundleId[nftAddress][nftId] = _loanId;
             loanItems[_loanId].nftRewardContracts.push(nftAddress);
             loanItems[_loanId].nftRewards.push(nftId);
             IERC721(nftAddress).safeTransferFrom(_msgSender(), address(this), nftId);
@@ -338,11 +339,25 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
         emit NFTRewardsAdded(_loanId, _nftAddresses, _nftIds);
     }
 
+    /**
+     * Get Loanee Rewards
+     *
+     * @param _loanId - Id of the loaned item
+     *
+     */
+
     function getLoaneeRewards(uint256 _loanId) public view returns (uint256) {
         uint256 loanerRewards = (loanItems[_loanId].totalRewards * loanItems[_loanId].percentageRewards) / 100;
         uint256 loaneeRewards = loanItems[_loanId].totalRewards - loanerRewards;
         return (loaneeRewards - loanItems[_loanId].loaneeClaimedRewards);
     }
+
+    /**
+     * Get Loanee Rewards
+     *
+     * @param _loanId - Id of the loaned item
+     *
+     */
 
     function getLoanerRewards(uint256 _loanId) public view returns (uint256) {
         uint256 loanerRewards = (loanItems[_loanId].totalRewards * loanItems[_loanId].percentageRewards) / 100;
@@ -402,6 +417,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
             for (uint256 i = 0; i < loanItems[_loanId].nftRewards.length; i++) {
                 uint256 id = loanItems[_loanId].nftRewards[i];
                 address nftAddress = loanItems[_loanId].nftRewardContracts[i];
+                _nftToBundleId[nftAddress][id] = 0;
                 IERC721(nftAddress).safeTransferFrom(address(this), loanItems[_loanId].owner, id);
             }
             emit NFTRewardsClaimed(loanItems[_loanId].owner, loanItems[_loanId].nftRewards, _loanId);
@@ -451,19 +467,29 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
 
     /**
      * Withdraw ERC20 Rewards
+     * @param _token - IERC20 Token
      */
 
-    function withdrawERC20() external onlyOwner {
-        uint256 balance = token.balanceOf(address(this));
-        token.transfer(owner(), balance);
+    function withdrawERC20(IERC20 _token) external onlyAdmin {
+        require(_token != token, " Cannot withdraw Voxel tokens");
+        uint256 balance = _token.balanceOf(address(this));
+        _token.safeTransfer(owner(), balance);
     }
 
-    function withdrawNFTs(address _token, uint256[] memory _tokenIds) external onlyOwner {
-        uint256 len = _tokenIds.length;
-        require(len > 0, "tokenIds length == 0");
-        for (uint256 i = 0; i < len; i++) {
+    /**
+     * Admin can add NFT Rewards
+     *
+     * @param _nftAddresses - NFT Contract addresses.
+     * @param _tokenIds - NFT token ids.
+     */
+
+    function withdrawNFTs(address[] calldata _nftAddresses, uint256[] calldata _tokenIds) external onlyAdmin {
+        require(_tokenIds.length > 0, "tokenIds length == 0");
+        for (uint256 i = 0; i < _tokenIds.length; i++) {
+            address nftAddress = _nftAddresses[i];
             uint256 tokenId = _tokenIds[i];
-            IERC721(_token).safeTransferFrom(address(this), owner(), tokenId);
+            require(_nftToBundleId[nftAddress][tokenId] == 0, "Cannot withdraw from loaned bundles");
+            IERC721(nftAddress).safeTransferFrom(address(this), owner(), tokenId);
         }
     }
 
