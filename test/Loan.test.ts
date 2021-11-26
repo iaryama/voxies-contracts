@@ -411,7 +411,7 @@ describe("Loaning Tests", async () => {
                 expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1015);
             });
             it("Testing pending rewards and contract balances", async () => {
-                for (var i = 1; i < 200; i++) {
+                for (var i = 1; i < 100; i++) {
                     await voxel.approve(loan.address, BigNumber.from(99000000 * i));
                     await expect(loan.connect(owner).addERC20Rewards(loanId, BigNumber.from(99000000 * i)))
                         .to.emit(loan, "ERC20RewardsAdded")
