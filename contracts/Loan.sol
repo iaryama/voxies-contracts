@@ -468,6 +468,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
             );
         }
         areNFTsClaimed[_loanId] = true;
+        loanItems[_loanId].isActive = false;
         for (uint256 i = 0; i < loanItems[_loanId].tokenIds.length; i++) {
             uint256 id = loanItems[_loanId].tokenIds[i];
             address nftAddress = loanItems[_loanId].nftAddresses[i];
