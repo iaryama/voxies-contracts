@@ -107,10 +107,12 @@ describe("Nft Auction Test", async () => {
 
             var approvalResult = await vox.connect(accounts1).approve(auction.address, nftId);
             await expect(approvalResult).to.emit(vox, "Approval");
+            await auction.connect(owner).setNFTContractStatus(vox.address, true);
             var auctionResult = await auction
                 .connect(accounts1)
                 .startDutchAuction(
-                    nftId,
+                    [vox.address],
+                    [nftId],
                     ethers.utils.parseEther(startBid),
                     ethers.utils.parseEther(endBid),
                     duration
@@ -129,7 +131,8 @@ describe("Nft Auction Test", async () => {
                 auction
                     .connect(accounts2)
                     .startDutchAuction(
-                        nftId,
+                        [vox.address],
+                        [nftId],
                         ethers.utils.parseEther(startBid),
                         ethers.utils.parseEther(endBid),
                         duration
@@ -143,9 +146,14 @@ describe("Nft Auction Test", async () => {
 
             var approvalResult = await vox.connect(accounts1).approve(auction.address, nftId);
             await expect(approvalResult).to.emit(vox, "Approval");
-            var auctionResult = await auction
+            const auctionResult = await auction
                 .connect(accounts1)
-                .startEnglishAuction(nftId, ethers.utils.parseEther(startBid), duration);
+                .callStatic.startEnglishAuction(
+                    [vox.address],
+                    [nftId],
+                    ethers.utils.parseEther(startBid),
+                    duration
+                );
             await expect(auctionResult).to.emit(auction, "NewAuctionOpened");
         });
         it("Non-owner of Nft should not be able to start English Auction", async () => {
@@ -158,7 +166,7 @@ describe("Nft Auction Test", async () => {
             await expect(
                 auction
                     .connect(accounts2)
-                    .startEnglishAuction(nftId, ethers.utils.parseEther(startBid), duration)
+                    .startEnglishAuction([vox.address], [nftId], ethers.utils.parseEther(startBid), duration)
             ).to.be.revertedWith("Not NFT owner");
         });
         it("User should be able to place bid in Dutch Auction", async () => {
@@ -173,7 +181,7 @@ describe("Nft Auction Test", async () => {
 
             var bidResult = await auction
                 .connect(accounts2)
-                .buyNftFromDutchAuction(nftId, ethers.utils.parseEther(newBid), 0);
+                .buyNftFromDutchAuction(auctionResult, ethers.utils.parseEther(newBid), 0);
             await expect(bidResult).to.emit(auction, "BoughtNFTInDutchAuction");
         });
         it("User should not be able to place bid in Inactive Dutch Auction", async () => {
