@@ -11,6 +11,7 @@ import {
     VoxiesNFTEngine,
 } from "../typechain";
 import { expect } from "chai";
+import { string } from "hardhat/internal/core/params/argumentTypes";
 
 describe("Loaning Tests", async () => {
     let owner: Signer,
@@ -25,9 +26,10 @@ describe("Loaning Tests", async () => {
         loan: Loan,
         voxelEngine: VoxiesNFTEngine__factory,
         vox: VoxiesNFTEngine,
-        nftAddresses: string[];
+        nftAddresses: string[],
+        nullAddress: string;
 
-    beforeEach(async () => {
+    before(async () => {
         voxelEngine = (await ethers.getContractFactory("VoxiesNFTEngine")) as VoxiesNFTEngine__factory;
         vox = await voxelEngine.deploy("VoxelNFT", "VOX");
         voxelFactory = (await ethers.getContractFactory("Voxel")) as Voxel__factory;
@@ -36,6 +38,7 @@ describe("Loaning Tests", async () => {
         loan = await loanFactory.deploy([], voxel.address);
         [owner, accounts1, accounts2, accounts3, accounts4, accounts5] = await ethers.getSigners();
         vox.addToWhitelist(loan.address);
+        nullAddress = ethers.utils.getAddress("0x0000000000000000000000000000000000000000");
     });
     describe("Access Tests", async () => {
         it("owner should be able to add allowed NFT", async () => {
@@ -53,8 +56,8 @@ describe("Loaning Tests", async () => {
     //Contract Address is not whitelisted'
 
     describe("Functionality Tests", async () => {
-        let nftIds: BigNumber[];
-        beforeEach(async () => {
+        let nftIds: BigNumber[], loanId: BigNumber;
+        before(async () => {
             const nftOwner = await accounts1.getAddress();
             expect(loan.allowNFTContract(vox.address, true));
             const hash = "some-hash";
@@ -73,36 +76,68 @@ describe("Loaning Tests", async () => {
             }
         });
         it("only nft owner can create loanable bundle", async () => {
-            expect(
-                loan.connect(accounts2).createLoanableItem(nftAddresses, nftIds, 1000, 30, 604800)
+            await expect(
+                loan
+                    .connect(accounts2)
+                    .createLoanableItem(
+                        nftAddresses,
+                        nftIds,
+                        1000,
+                        30,
+                        604800,
+                        await accounts3.getAddress(),
+                        0
+                    )
             ).to.be.revertedWith("Sender is not the owner of given NFT");
         });
         it("should not be able to create loan with timePeriod less than minimum Loan Period", async () => {
-            expect(
-                loan.connect(accounts1).createLoanableItem(nftAddresses, nftIds, 1000, 30, 100)
+            await expect(
+                loan
+                    .connect(accounts1)
+                    .createLoanableItem(nftAddresses, nftIds, 1000, 30, 100, await accounts3.getAddress(), 0)
             ).to.be.revertedWith("Incorrect loan time period specified");
         });
         it("should not be able to create loan with timePeriod greater than maximum Loan Period", async () => {
-            expect(
-                loan.connect(accounts1).createLoanableItem(nftAddresses, nftIds, 1000, 30, 605800)
+            await expect(
+                loan
+                    .connect(accounts1)
+                    .createLoanableItem(
+                        nftAddresses,
+                        nftIds,
+                        1000,
+                        30,
+                        605800,
+                        await accounts3.getAddress(),
+                        0
+                    )
             ).to.be.revertedWith("Incorrect loan time period specified");
         });
         it("loaner Should be able to list loan item", async () => {
             const ownerAddress = await accounts1.getAddress();
-            const loanId = await loan
+            loanId = await loan
                 .connect(accounts1)
-                .callStatic.createLoanableItem(nftAddresses, nftIds, 1000, 30, 604800);
-            expect(loan.connect(accounts1).createLoanableItem(nftAddresses, nftIds, 1000, 30, 604800))
+                .callStatic.createLoanableItem(nftAddresses, nftIds, 1000, 13, 604800, nullAddress, 0);
+            await expect(
+                loan
+                    .connect(accounts1)
+                    .createLoanableItem(nftAddresses, nftIds, 1000, 13, 604800, nullAddress, 0)
+            )
                 .to.emit(loan, "LoanableItemCreated")
-                .withArgs(ownerAddress, nftAddresses, nftIds, loanId);
+                .withArgs(ownerAddress, nftAddresses, nftIds, loanId, nullAddress, 0);
+        });
+        it("should not be able to withdraw bundled nft's", async () => {
+            await expect(loan.connect(owner).withdrawNFTs(nftAddresses, nftIds)).to.be.revertedWith(
+                "Cannot withdraw from loaned bundles"
+            );
         });
         describe("Loaning, Rewarding Listed Loan Items", async () => {
             let nftIds2: BigNumber[],
-                loanId: BigNumber,
+                nftIds3: BigNumber[],
                 ownerAddress: string,
                 account2Address: string,
                 account1Address: string,
-                account3Address: string;
+                account3Address: string,
+                loanId2: BigNumber;
             const createLoanableItemParams = async (
                 account: Signer,
                 _nftIds: BigNumber[],
@@ -121,24 +156,38 @@ describe("Loaning Tests", async () => {
                         _nftIds,
                         upfrontFee,
                         percentageRewards,
-                        timePeriod
+                        timePeriod,
+                        nullAddress,
+                        0
                     );
                 expect(
                     loan
                         .connect(account)
-                        .createLoanableItem(nftAddresses, _nftIds, upfrontFee, percentageRewards, timePeriod)
+                        .createLoanableItem(
+                            nftAddresses,
+                            _nftIds,
+                            upfrontFee,
+                            percentageRewards,
+                            timePeriod,
+                            nullAddress,
+                            0
+                        )
                 )
                     .to.emit(loan, "LoanableItemCreated")
-                    .withArgs(await account.getAddress(), nftAddresses, _nftIds, _loanId);
+                    .withArgs(await account.getAddress(), nftAddresses, _nftIds, _loanId, nullAddress, 0);
                 return _loanId;
             };
-            beforeEach(async () => {
+            before(async () => {
                 const iterations = 10;
                 ownerAddress = await owner.getAddress();
                 account1Address = await accounts1.getAddress();
                 account2Address = await accounts2.getAddress();
                 account3Address = await accounts3.getAddress();
+                await voxel.connect(owner).transfer(account2Address, 1000);
+                await voxel.connect(accounts2).approve(loan.address, 1000);
+                await voxel.connect(owner).approve(loan.address, 1000);
                 nftIds2 = [];
+                nftIds3 = [];
                 for (var i = 1; i <= iterations; i++) {
                     const hash = `ipfs-hash-user1-${i + 20}`;
                     const nftId = await vox.callStatic.issueToken(account3Address, hash);
@@ -146,28 +195,75 @@ describe("Loaning Tests", async () => {
                     await vox.connect(accounts3).approve(loan.address, nftId);
                     nftIds2.push(nftId);
                 }
-                loanId = await loan
-                    .connect(accounts1)
-                    .callStatic.createLoanableItem(nftAddresses, nftIds, 1000, 30, 604800);
+                for (var i = 1; i <= iterations; i++) {
+                    const hash = `ipfs-hash-user1-${i + 60}`;
+                    const nftId = await vox.callStatic.issueToken(ownerAddress, hash);
+                    await vox.issueToken(ownerAddress, hash);
+                    await vox.connect(owner).approve(loan.address, nftId);
+                    nftIds3.push(nftId);
+                }
+            });
+            it("loaner can create a reservable loan Item", async () => {
+                loanId2 = await loan
+                    .connect(accounts3)
+                    .callStatic.createLoanableItem(
+                        nftAddresses,
+                        nftIds2,
+                        100,
+                        13,
+                        60480,
+                        await accounts4.getAddress(),
+                        1
+                    );
                 await expect(
-                    loan.connect(accounts1).createLoanableItem(nftAddresses, nftIds, 1000, 30, 604800)
+                    loan
+                        .connect(accounts3)
+                        .createLoanableItem(
+                            nftAddresses,
+                            nftIds2,
+                            100,
+                            13,
+                            60480,
+                            await accounts4.getAddress(),
+                            1
+                        )
                 )
                     .to.emit(loan, "LoanableItemCreated")
-                    .withArgs(account1Address, nftAddresses, nftIds, loanId);
+                    .withArgs(
+                        account3Address,
+                        nftAddresses,
+                        nftIds2,
+                        loanId2,
+                        await accounts4.getAddress(),
+                        1
+                    );
             });
-            it("check if deployer has access", async () => {
-                var ret = await loan.hasAccessToNFT(vox.address, nftIds[0], await owner.getAddress());
-                expect(ret).to.equal(false);
+            it("update reserve on an inactive loan", async () => {
+                await loan.connect(accounts3).reserveLoanItem(loanId2, await accounts5.getAddress());
+                const reservedTo = (await loan.loanItems(loanId2)).reservedTo.toString();
+                expect(reservedTo).to.be.equal(await accounts5.getAddress());
             });
-            it("check if account1 has access", async () => {
-                var ret = await loan
-                    .connect(accounts1)
-                    .hasAccessToNFT(vox.address, nftIds[0], await accounts1.getAddress());
-                expect(ret).to.equal(true);
+            it("Reserved loan cannot be issued to other loaner", async () => {
+                await expect(loan.connect(accounts2).loanItem(loanId2)).to.be.revertedWith(
+                    "Private loan can only be issued to reserved user"
+                );
+            });
+            it("should be able to loan reserved loan ", async () => {
+                await voxel.connect(owner).transfer(await accounts5.getAddress(), 1000);
+                await voxel.connect(accounts5).approve(loan.address, 1000);
+                await loan.connect(accounts5).loanItem(loanId2);
+                expect((await loan.loanItems(loanId2)).loanee).to.be.equal(await accounts5.getAddress());
+            });
+            it("Should not update reservedTo on an active loan", async () => {
+                await expect(
+                    loan.connect(accounts3).reserveLoanItem(loanId2, await accounts5.getAddress())
+                ).to.be.revertedWith("Cannot reserve an active loan item");
             });
             it("revert on nft use for second loan bundle", async () => {
                 expect(
-                    loan.connect(accounts1).createLoanableItem(nftAddresses, nftIds, 1000, 30, 604800)
+                    loan
+                        .connect(accounts1)
+                        .createLoanableItem(nftAddresses, nftIds, 1000, 30, 604800, nullAddress, 0)
                 ).to.be.revertedWith("Loan Bundle exits with the given NFT");
             });
             it("nfts should be locked/non transferable after listing loan item", async () => {
@@ -189,31 +285,26 @@ describe("Loaning Tests", async () => {
                 expect(loanItem.isActive).to.be.equal(false);
             });
             it("loanee should be able to loan item", async () => {
-                await voxel.connect(owner).transfer(account2Address, 1000);
-                await voxel.connect(accounts2).approve(loan.address, 1000);
                 await expect(loan.connect(accounts2).loanItem(loanId)).to.emit(loan, "LoanIssued");
                 const loanItem = await loan.loanItems(loanId);
                 expect(loanItem.loanee).to.be.equal(account2Address);
             });
             it("should not allow to issue an active loan", async () => {
-                await voxel.connect(owner).transfer(account2Address, 1000);
-                await voxel.connect(accounts2).approve(loan.address, 1000);
-                await expect(loan.connect(accounts2).loanItem(loanId)).to.emit(loan, "LoanIssued");
-                const loanItem = await loan.loanItems(loanId);
-                expect(loanItem.loanee).to.be.equal(account2Address);
                 expect(loan.connect(accounts3).loanItem(loanId)).to.be.revertedWith(
                     "Loan Item is already loaned"
                 );
             });
+            it("check if deployer has access", async () => {
+                var ret = await loan.hasAccessToNFT(vox.address, nftIds[0], await owner.getAddress());
+                expect(ret).to.equal(false);
+            });
+            it("check if account1 has access", async () => {
+                var ret = await loan
+                    .connect(accounts1)
+                    .hasAccessToNFT(vox.address, nftIds[0], await accounts1.getAddress());
+                expect(ret).to.equal(false);
+            });
             it("check if loanee has access", async () => {
-                await voxel.connect(owner).transfer(account2Address, 1000);
-                await voxel.connect(accounts2).approve(loan.address, 1000);
-                await expect(loan.connect(accounts2).loanItem(loanId)).to.emit(loan, "LoanIssued");
-                const loanItem = await loan.loanItems(loanId);
-                expect(loanItem.loanee).to.be.equal(account2Address);
-                expect(loan.connect(accounts3).loanItem(loanId)).to.be.revertedWith(
-                    "Loan Item is already loaned"
-                );
                 var ret = await loan
                     .connect(accounts1)
                     .hasAccessToNFT(vox.address, nftIds[0], await accounts2.getAddress());
@@ -223,237 +314,170 @@ describe("Loaning Tests", async () => {
                     .hasAccessToNFT(vox.address, nftIds[0], await accounts1.getAddress());
                 expect(ret).to.equal(false);
             });
-            it("only owner should be able to add rewards on NFTs", async () => {
-                const iterations = 10;
-                let amounts = [];
-                for (var i = 1; i <= iterations; i++) {
-                    amounts.push(BigNumber.from(10));
-                }
-                await expect(
-                    loan.connect(accounts1).addRewardsForNFT(nftAddresses, nftIds, amounts)
-                ).to.be.revertedWith("Caller does not have Admin Access");
+            it("only admin should be able to add rewards on NFTs", async () => {
+                await expect(loan.connect(accounts1).addERC20Rewards(loanId, 100)).to.be.revertedWith(
+                    "Caller does not have Admin Access"
+                );
             });
-            it("owner should be able to add rewards on NFTs", async () => {
-                const iterations = 10;
-                let amounts = [];
-                for (var i = 1; i <= iterations; i++) {
-                    amounts.push(BigNumber.from(10));
-                }
-                await voxel.connect(owner).transfer(account2Address, 1000);
-                await voxel.connect(accounts2).approve(loan.address, 1000);
-                await expect(loan.connect(accounts2).loanItem(loanId)).to.emit(loan, "LoanIssued");
-                await voxel.connect(owner).approve(loan.address, 1000);
-                await expect(loan.connect(owner).addRewardsForNFT(nftAddresses, nftIds, amounts))
-                    .to.emit(loan, "RewardsAdded")
-                    .withArgs(nftAddresses, nftIds, amounts);
+            it("owner should be able to add ERC20 rewards", async () => {
+                await expect(loan.connect(owner).addERC20Rewards(loanId, 100))
+                    .to.emit(loan, "ERC20RewardsAdded")
+                    .withArgs(loanId, 100);
                 expect((await voxel.balanceOf(loan.address)).toNumber()).to.be.equal(100);
             });
-            it("rewards should be directly sent to owner for an inactive loan.", async () => {
-                const iterations = 10;
-                let amounts = [];
-                for (var i = 1; i <= iterations; i++) {
-                    amounts.push(BigNumber.from(10));
-                }
-                // await voxel.connect(owner).transfer(account2Address, 1000);
-                // await voxel.connect(accounts2).approve(loan.address, 1000);
-                // expect(loan.connect(accounts2).loanItem(loanId)).to.emit(loan, "LoanIssued");
-                await voxel.connect(owner).approve(loan.address, 1000);
-                await expect(loan.connect(owner).addRewardsForNFT(nftAddresses, nftIds, amounts))
-                    .to.emit(loan, "RewardsAdded")
-                    .withArgs(nftAddresses, nftIds, amounts);
-                expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(100);
-            });
-            it("Add rewards for nfts part of multiple loan bundles", async () => {
-                const iterations = 10;
-                let amounts = [];
-                for (var i = 1; i <= iterations; i++) {
-                    amounts.push(BigNumber.from(10));
-                }
-                const _loanId = await createLoanableItemParams(
-                    accounts3,
-                    nftIds2,
-                    BigNumber.from(50),
-                    BigNumber.from(13),
-                    BigNumber.from(5800)
-                );
-                await voxel.connect(owner).transfer(account2Address, 10000);
-                await voxel.connect(accounts2).approve(loan.address, 10000);
-                await expect(loan.connect(accounts2).loanItem(loanId)).to.emit(loan, "LoanIssued");
-                await voxel.connect(owner).approve(loan.address, 10000);
-                expect(loan.connect(accounts2).loanItem(_loanId)).to.emit(loan, "LoanIssued");
+            it("bundled NFT should not be added NFT rewards", async () => {
                 await expect(
-                    loan
-                        .connect(owner)
-                        .addRewardsForNFT(
-                            nftAddresses.concat(nftAddresses),
-                            nftIds.concat(nftIds2),
-                            amounts.concat(amounts)
-                        )
-                )
-                    .to.emit(loan, "RewardsAdded")
-                    .withArgs(nftAddresses, nftIds, amounts);
-                const _loan2Rewards = await (await loan.loanItems(_loanId)).totalRewards;
-                const _loan1Rewards = await (await loan.loanItems(loanId)).totalRewards;
-                expect(_loan2Rewards.toNumber()).to.equal(100);
-                expect(_loan1Rewards.toNumber()).to.equal(100);
+                    loan.connect(owner).addNFTRewards(loanId, nftAddresses, nftIds)
+                ).to.be.revertedWith("Bundled NFT cannot be added as rewards");
+            });
+            it("owner should  be able to add NFT rewards", async () => {
+                await expect(loan.connect(owner).addNFTRewards(loanId, nftAddresses, nftIds3))
+                    .to.emit(loan, "NFTRewardsAdded")
+                    .withArgs(loanId, nftAddresses, nftIds3);
+                for (var i = 0; i < nftIds3.length; i++) {
+                    expect((await vox.ownerOf(nftIds3[i])).toString()).to.be.equal(loan.address.toString());
+                }
+            });
+            it("should not be able to withdraw rewarded nft's", async () => {
+                await expect(loan.connect(owner).withdrawNFTs(nftAddresses, nftIds3)).to.be.revertedWith(
+                    "Cannot withdraw from loaned bundles"
+                );
+            });
+            it("should be able to withdraw nft's which are not bundled", async () => {
+                const vox1 = await voxelEngine.deploy("VoxelNFT", "VOX");
+                var _hashes = [];
+                var _nftIds = [];
+                var _nftAddresses = [];
+                for (var i = 1; i <= 10; i++) {
+                    const hash = `ipfs-hash-user1-${i}`;
+                    _hashes.push(hash);
+                    const nftId = await vox1.callStatic.issueToken(loan.address, hash);
+                    await vox1.issueToken(loan.address, hash);
+                    _nftIds.push(nftId);
+                    _nftAddresses.push(vox1.address);
+                }
+                await loan.connect(owner).withdrawNFTs(_nftAddresses, _nftIds);
+                for (var i = 0; i < _nftIds.length; i++) {
+                    var nftOwner = await vox1.ownerOf(_nftIds[i]);
+                    expect(nftOwner).to.be.equal(ownerAddress);
+                }
+            });
+            it("should be able to withdraw erc20 other than voxel", async () => {
+                const voxel1 = await voxelFactory.deploy();
+                await voxel1.connect(owner).transfer(loan.address, 100);
+                const balance = await (await voxel1.balanceOf(ownerAddress)).toBigInt();
+                await loan.connect(owner).withdrawERC20(voxel1.address);
+                expect((await voxel1.balanceOf(ownerAddress)).toBigInt()).to.be.equal(balance + BigInt(100));
+            });
+            it("shouldnot be able to withdraw voxel tokens", async () => {
+                expect(loan.connect(owner).withdrawERC20(voxel.address)).to.be.revertedWith(
+                    "Cannot withdraw Voxel tokens"
+                );
             });
             it("loaner can claim rewards", async () => {
-                const iterations = 10;
-                let amounts = [];
-                for (var i = 1; i <= iterations; i++) {
-                    amounts.push(BigNumber.from(1));
-                }
-                const _loanId = await createLoanableItemParams(
-                    accounts3,
-                    nftIds2,
-                    BigNumber.from(50),
-                    BigNumber.from(13),
-                    BigNumber.from(5800)
+                await expect(loan.connect(owner).addERC20Rewards(loanId, 10))
+                    .to.emit(loan, "ERC20RewardsAdded")
+                    .withArgs(loanId, 10);
+                await expect(loan.connect(accounts1).claimERC20Rewards(loanId)).to.emit(
+                    loan,
+                    "ERC20RewardsClaimed"
                 );
-                await voxel.connect(owner).transfer(account2Address, 1000);
-                await voxel.connect(accounts2).approve(loan.address, 1000);
-                expect(loan.connect(accounts2).loanItem(_loanId)).to.emit(loan, "LoanIssued");
-                await voxel.connect(owner).approve(loan.address, 1000);
-                await expect(loan.connect(owner).addRewardsForNFT(nftAddresses, nftIds2, amounts))
-                    .to.emit(loan, "RewardsAdded")
-                    .withArgs(nftAddresses, nftIds2, amounts);
-                await expect(loan.connect(accounts3).claimRewards(_loanId)).to.emit(loan, "RewardsClaimed");
-                const totalRewards = await (await loan.loanItems(_loanId)).totalRewards;
-                expect(totalRewards.toNumber()).to.be.equal(10);
-                expect((await voxel.balanceOf(account3Address)).toNumber()).to.be.equal(51);
-                expect((await voxel.balanceOf(account2Address)).toNumber()).to.be.equal(950);
+                const totalRewards = await (await loan.loanItems(loanId)).totalRewards;
+                expect(totalRewards.toNumber()).to.be.equal(110);
+                expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1014);
+                expect((await voxel.balanceOf(account2Address)).toNumber()).to.be.equal(0);
+            });
+            it("loaner cannot claim nft rewards during active loan period", async () => {
+                await expect(loan.connect(accounts1).claimNFTRewards(loanId)).to.be.revertedWith(
+                    "Loan period is still active"
+                );
             });
             it("loanee can claim rewards", async () => {
-                const iterations = 10;
-                let amounts = [];
-                for (var i = 1; i <= iterations; i++) {
-                    amounts.push(BigNumber.from(1));
-                }
-                const _loanId = await createLoanableItemParams(
-                    accounts3,
-                    nftIds2,
-                    BigNumber.from(50),
-                    BigNumber.from(13),
-                    BigNumber.from(5800)
+                await expect(loan.connect(owner).addERC20Rewards(loanId, 10))
+                    .to.emit(loan, "ERC20RewardsAdded")
+                    .withArgs(loanId, 10);
+                await expect(loan.connect(accounts2).claimERC20Rewards(loanId)).to.emit(
+                    loan,
+                    "ERC20RewardsClaimed"
                 );
-                await voxel.connect(owner).transfer(account2Address, 1000);
-                await voxel.connect(accounts2).approve(loan.address, 1000);
-                await expect(loan.connect(accounts2).loanItem(_loanId)).to.emit(loan, "LoanIssued");
-                await voxel.connect(owner).approve(loan.address, 1000);
-                await expect(loan.connect(owner).addRewardsForNFT(nftAddresses, nftIds2, amounts))
-                    .to.emit(loan, "RewardsAdded")
-                    .withArgs(nftAddresses, nftIds2, amounts);
-                await expect(loan.connect(accounts2).claimRewards(_loanId)).to.emit(loan, "RewardsClaimed");
-                const totalRewards = await (await loan.loanItems(_loanId)).totalRewards;
-                expect(totalRewards.toNumber()).to.be.equal(10);
-                expect((await voxel.balanceOf(account3Address)).toNumber()).to.be.equal(50);
-                expect((await voxel.balanceOf(account2Address)).toNumber()).to.be.equal(959);
+                const totalRewards = await (await loan.loanItems(loanId)).totalRewards;
+                expect(totalRewards.toNumber()).to.be.equal(120);
+                expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1014);
+                expect((await voxel.balanceOf(account2Address)).toNumber()).to.be.equal(105);
+                await expect(loan.connect(accounts1).claimERC20Rewards(loanId)).to.emit(
+                    loan,
+                    "ERC20RewardsClaimed"
+                );
+                expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1015);
+            });
+            it("Testing pending rewards and contract balances", async () => {
+                for (var i = 1; i < 100; i++) {
+                    await voxel.approve(loan.address, BigNumber.from(99000000 * i));
+                    await expect(loan.connect(owner).addERC20Rewards(loanId, BigNumber.from(99000000 * i)))
+                        .to.emit(loan, "ERC20RewardsAdded")
+                        .withArgs(loanId, BigNumber.from(99000000 * i));
+                    await expect(loan.connect(accounts1).claimERC20Rewards(loanId)).to.emit(
+                        loan,
+                        "ERC20RewardsClaimed"
+                    );
+                    await expect(loan.connect(accounts2).claimERC20Rewards(loanId)).to.emit(
+                        loan,
+                        "ERC20RewardsClaimed"
+                    );
+                    const totalRewards = (await loan.loanItems(loanId)).totalRewards;
+                    const loanerClaimedRewards = (
+                        await loan.loanItems(loanId)
+                    ).loanerClaimedRewards.toNumber();
+                    const loaneeClaimedRewards = (
+                        await loan.loanItems(loanId)
+                    ).loaneeClaimedRewards.toNumber();
+                    expect((await voxel.balanceOf(loan.address)).toNumber()).to.be.equal(
+                        totalRewards.toNumber() - loanerClaimedRewards - loaneeClaimedRewards
+                    );
+                }
             });
             it("loaner cannot claim NFTs over active loan period", async () => {
-                const iterations = 10;
-                let amounts = [];
-                for (var i = 1; i <= iterations; i++) {
-                    amounts.push(BigNumber.from(1));
-                }
-                const _loanId = await createLoanableItemParams(
-                    accounts3,
-                    nftIds2,
-                    BigNumber.from(50),
-                    BigNumber.from(13),
-                    BigNumber.from(5800)
-                );
-                await voxel.connect(owner).transfer(account2Address, 1000);
-                await voxel.connect(accounts2).approve(loan.address, 1000);
-                await expect(loan.connect(accounts2).loanItem(_loanId)).to.emit(loan, "LoanIssued");
-                await voxel.connect(owner).approve(loan.address, 1000);
-                await expect(loan.connect(owner).addRewardsForNFT(nftAddresses, nftIds2, amounts))
-                    .to.emit(loan, "RewardsAdded")
-                    .withArgs(nftAddresses, nftIds2, amounts);
-                await expect(loan.connect(accounts2).claimRewards(_loanId)).to.emit(loan, "RewardsClaimed");
-                const totalRewards = await (await loan.loanItems(_loanId)).totalRewards;
-                expect(totalRewards.toNumber()).to.be.equal(10);
-                expect((await voxel.balanceOf(account3Address)).toNumber()).to.be.equal(50);
-                expect((await voxel.balanceOf(account2Address)).toNumber()).to.be.equal(959);
-                // await network.provider.send("evm_increaseTime", [5800]);
-                // await network.provider.send("evm_mine");
-                expect(loan.connect(accounts3).claimNFTs(_loanId)).to.be.revertedWith(
+                expect(loan.connect(accounts1).claimNFTs(loanId)).to.be.revertedWith(
                     "Loan period is still active"
                 );
             });
             it("loaner can claim NFTs after active loan period", async () => {
-                const iterations = 10;
-                let amounts = [];
-                for (var i = 1; i <= iterations; i++) {
-                    amounts.push(BigNumber.from(1));
+                for (var i = 0; i < nftIds.length; i++) {
+                    expect((await vox.ownerOf(nftIds[i])).toString()).to.be.equal(loan.address);
                 }
-                const _loanId = await createLoanableItemParams(
-                    accounts3,
-                    nftIds2,
-                    BigNumber.from(50),
-                    BigNumber.from(13),
-                    BigNumber.from(5800)
-                );
-                await voxel.connect(owner).transfer(account2Address, 1000);
-                await voxel.connect(accounts2).approve(loan.address, 1000);
-                await expect(loan.connect(accounts2).loanItem(_loanId)).to.emit(loan, "LoanIssued");
-                await voxel.connect(owner).approve(loan.address, 1000);
-                await expect(loan.connect(owner).addRewardsForNFT(nftAddresses, nftIds2, amounts))
-                    .to.emit(loan, "RewardsAdded")
-                    .withArgs(nftAddresses, nftIds2, amounts);
-                // expect(loan.connect(accounts2).claimRewards(_loanId)).to.emit(loan, "RewardsClaimed");
-                await network.provider.send("evm_increaseTime", [5800]);
+                await network.provider.send("evm_increaseTime", [604800]);
                 await network.provider.send("evm_mine");
-                await loan.connect(accounts3).claimNFTs(_loanId);
-                for (i = 0; i < nftIds2.length; i++) {
-                    expect((await vox.ownerOf(nftIds2[i])).toString()).to.be.equal(
-                        account3Address.toString()
-                    );
+                await expect(loan.connect(accounts1).claimNFTs(loanId)).to.emit(loan, "NFTsClaimed");
+                for (var i = 0; i < nftIds.length; i++) {
+                    var nftOwner = await vox.ownerOf(nftIds[i]);
+                    expect(nftOwner).to.be.equal(account1Address);
                 }
-                const totalRewards = await (await loan.loanItems(_loanId)).totalRewards;
-                expect(totalRewards.toNumber()).to.be.equal(10);
-                expect((await voxel.balanceOf(account3Address)).toNumber()).to.be.equal(50);
-                expect((await voxel.balanceOf(account2Address)).toNumber()).to.be.equal(950);
             });
-            it("loaner cannot loan deleted loan", async () => {
-                const iterations = 10;
-                let amounts = [];
-                for (var i = 1; i <= iterations; i++) {
-                    amounts.push(BigNumber.from(1));
-                }
-                const _loanId = await createLoanableItemParams(
-                    accounts3,
-                    nftIds2,
-                    BigNumber.from(50),
-                    BigNumber.from(13),
-                    BigNumber.from(5800)
+            it("loaner or loanne can claim NFT rewards", async () => {
+                await expect(loan.connect(accounts2).claimNFTRewards(loanId)).to.be.revertedWith(
+                    "Only Loaner can claim NFT rewards"
                 );
-                await voxel.connect(owner).transfer(account2Address, 1000);
-                await voxel.connect(accounts2).approve(loan.address, 1000);
-                await expect(loan.connect(accounts2).loanItem(_loanId)).to.emit(loan, "LoanIssued");
-                await voxel.connect(owner).approve(loan.address, 1000);
-                await expect(loan.connect(owner).addRewardsForNFT(nftAddresses, nftIds2, amounts))
-                    .to.emit(loan, "RewardsAdded")
-                    .withArgs(nftAddresses, nftIds2, amounts);
-                // expect(loan.connect(accounts2).claimRewards(_loanId)).to.emit(loan, "RewardsClaimed");
-                await network.provider.send("evm_increaseTime", [5800]);
-                await network.provider.send("evm_mine");
-                await loan.connect(accounts3).claimNFTs(_loanId);
-                for (i = 0; i < nftIds2.length; i++) {
-                    expect((await vox.ownerOf(nftIds2[i])).toString()).to.be.equal(
-                        account3Address.toString()
+            });
+            it("loaner can claim NFT rewards", async () => {
+                await expect(loan.connect(accounts1).claimNFTRewards(loanId)).to.emit(
+                    loan,
+                    "NFTRewardsClaimed"
+                );
+                for (var i = 0; i < nftIds3.length; i++) {
+                    expect((await vox.ownerOf(nftIds3[i])).toString()).to.be.equal(
+                        account1Address.toString()
                     );
                 }
-                const totalRewards = await (await loan.loanItems(_loanId)).totalRewards;
-                expect(totalRewards.toNumber()).to.be.equal(10);
-                expect((await voxel.balanceOf(account3Address)).toNumber()).to.be.equal(50);
-                expect((await voxel.balanceOf(account2Address)).toNumber()).to.be.equal(950);
-                expect(loan.connect(accounts2).loanItem(_loanId)).to.be.revertedWith(
-                    "Loan Item is already loaned"
+            });
+            it("loaner cannot loan inactive loan", async () => {
+                expect(loan.connect(accounts2).loanItem(loanId)).to.be.revertedWith(
+                    "NFTs already claimed, cannot issue loan"
                 );
-                expect(
-                    loan.connect(owner).addRewardsForNFT(nftAddresses, nftIds2, amounts)
-                ).to.be.revertedWith("Loanable Item Not Found");
+                expect(loan.connect(owner).addERC20Rewards(loanId, 100)).to.be.revertedWith(
+                    "Inactive loan item"
+                );
             });
         });
     });
 });
+0;

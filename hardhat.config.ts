@@ -24,7 +24,15 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
  * @type import('hardhat/config').HardhatUserConfig
  */
 const config: HardhatUserConfig = {
-    solidity: "0.8.4",
+    solidity: {
+        version: "0.8.4",
+        settings: {
+            optimizer: {
+                enabled: true,
+                runs: 200,
+            },
+        },
+    },
     networks: {
         polygon: {
             url: "https://polygon-rpc.com/",
@@ -39,7 +47,7 @@ const config: HardhatUserConfig = {
     },
     // even if verifying on polygonscan, property name should be etherscan only, only apiKey should change
     etherscan: {
-        apiKey: process.env.EXPLORER_API_KEY || "",
+        apiKey: (process.env.EXPLORER_API_KEY as string) || "",
     },
 };
 
