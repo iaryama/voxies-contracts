@@ -81,13 +81,13 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         address originalOwner
     );
 
-    event EnglishAuctionClosed(uint256 indexed nftId, uint256 highestBid, address indexed highestBidder);
+    event EnglishAuctionClosed(uint256 indexed auctionId, uint256 highestBid, address indexed highestBidder);
 
-    event BidPlacedInEnglishAuction(uint256 indexed nftId, uint256 indexed bidPrice, address indexed bidder);
+    event BidPlacedInEnglishAuction(uint256 indexed auctionId, uint256 indexed bidPrice, address indexed bidder);
 
-    event BoughtNFTInDutchAuction(uint256 indexed nftId, uint256 indexed bidPrice, address indexed buyer);
+    event BoughtNFTInDutchAuction(uint256 indexed auctionId, uint256 indexed bidPrice, address indexed buyer);
 
-    event AuctionCancelled(uint256 indexed nftId, address indexed cancelledBy);
+    event AuctionCancelled(uint256 indexed auctionId, address indexed cancelledBy);
 
     constructor(IERC20 _voxel) {
         voxel = _voxel;
