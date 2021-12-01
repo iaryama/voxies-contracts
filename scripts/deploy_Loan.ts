@@ -1,4 +1,4 @@
-import { ethers, run } from "hardhat";
+import { ethers, run, artifacts } from "hardhat";
 import { Loan, Loan__factory } from "../typechain";
 
 async function deploy() {
@@ -29,6 +29,20 @@ async function deploy() {
         });
     } catch (e: any) {
         console.error(`error in verifying: ${e.message}`);
+    }
+
+    try {
+        if ((process.env.TRUSTED_FORWARDER_ADDRESS as string) != null) {
+            const tokenArtifact = await artifacts.readArtifact("Loan");
+
+            const loanToken = new ethers.Contract(loan.address, tokenArtifact.abi, Loan.signer);
+
+            await loanToken.setTrustedForwarder(process.env.TRUSTED_FORWARDER_ADDRESS as string);
+        } else {
+            console.error("Cannot setup trusted forwarder, please setup manually.");
+        }
+    } catch (e: any) {
+        console.error(`error in setting up trusted forwarder: ${e.message}`);
     }
 }
 deploy();
