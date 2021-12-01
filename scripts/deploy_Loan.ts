@@ -35,9 +35,13 @@ async function deploy() {
         if ((process.env.TRUSTED_FORWARDER_ADDRESS as string) != null) {
             const tokenArtifact = await artifacts.readArtifact("Loan");
 
-            const loanToken = new ethers.Contract(loan.address, tokenArtifact.abi, Loan.signer);
+            const loanToken = Loan.attach("0x716c0d8732b33a2a1E385B4a1Bdf75CdeCE96E56") as Loan;
 
-            await loanToken.setTrustedForwarder(process.env.TRUSTED_FORWARDER_ADDRESS as string);
+            const receipt = await loanToken.setTrustedForwarder(
+                process.env.TRUSTED_FORWARDER_ADDRESS as string
+            );
+
+            console.log(await receipt.wait());
         } else {
             console.error("Cannot setup trusted forwarder, please setup manually.");
         }

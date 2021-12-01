@@ -471,7 +471,7 @@ describe("Loaning Tests", async () => {
             });
             it("loaner cannot loan inactive loan", async () => {
                 expect(loan.connect(accounts2).loanItem(loanId)).to.be.revertedWith(
-                    "Loan Item is already loaned"
+                    "NFTs already claimed, cannot issue loan"
                 );
                 expect(loan.connect(owner).addERC20Rewards(loanId, 100)).to.be.revertedWith(
                     "Inactive loan item"
