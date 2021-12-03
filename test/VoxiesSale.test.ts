@@ -1,7 +1,15 @@
 import { ethers, waffle } from "hardhat";
 import { expect, use } from "chai";
 import { Signer } from "ethers";
-import { Voxel,Voxel__factory,VoxiesNFTEngine, VoxiesNFTEngine__factory, NFTSale, NFTSale__factory } from "../typechain";
+const sigUtil = require("@metamask/eth-sig-util");
+import {
+    Voxel,
+    Voxel__factory,
+    VoxiesNFTEngine,
+    VoxiesNFTEngine__factory,
+    NFTSale,
+    NFTSale__factory,
+} from "../typechain";
 
 use(waffle.solidity);
 
@@ -23,7 +31,7 @@ describe("NFTSale Test", async () => {
         vox = await voxelEngine.deploy("VoxelNFT", "VOX");
         [owner, accounts1, accounts2, accounts3] = await ethers.getSigners();
         nftsale = await ethers.getContractFactory("NFTSale");
-        nft = await nftsale.deploy(vox.address,voxel.address);
+        nft = await nftsale.deploy(vox.address, voxel.address);
 
         var transferResult = await voxel.connect(owner).approve(await owner.getAddress(), 10000);
         await expect(transferResult).to.emit(voxel, "Approval");
@@ -130,9 +138,9 @@ describe("NFTSale Test", async () => {
             const buyer = await accounts2.getAddress();
             const sale = await nft.connect(buyer).getSale(nftId);
             const pricee = sale[1];
-            await expect(
-                nft.connect(accounts2).purchaseNFT(nftId, pricee)
-            ).to.be.revertedWith("Contract Status in not Active");
+            await expect(nft.connect(accounts2).purchaseNFT(nftId, pricee)).to.be.revertedWith(
+                "Contract Status in not Active"
+            );
         });
         it("should be able to purchase", async () => {
             await nft.setContractStatus(true);
@@ -202,9 +210,7 @@ describe("NFTSale Test", async () => {
             const pricee = sale[1];
             var approvallResult = await voxel.connect(accounts3).approve(nft.address, pricee);
             await expect(approvallResult).to.emit(voxel, "Approval");
-            var purchaseResult = await nft
-                .connect(accounts3)
-                .purchaseNFT(nftId, pricee);
+            var purchaseResult = await nft.connect(accounts3).purchaseNFT(nftId, pricee);
             const newNftOwner = await vox.ownerOf(nftId);
             await expect(purchaseResult).to.emit(nft, "Sold");
             await expect(newNftOwner).to.be.equal(buyer);
@@ -230,9 +236,7 @@ describe("NFTSale Test", async () => {
             const totalPrice = prices.reduce((a, b) => a + b);
             var approvallResult = await voxel.connect(accounts2).approve(nft.address, totalPrice);
             await expect(approvallResult).to.emit(voxel, "Approval");
-            var purchaseResult = await nft
-                .connect(accounts2)
-                .purchaseNFTBatch(nftIds, totalPrice);
+            var purchaseResult = await nft.connect(accounts2).purchaseNFTBatch(nftIds, totalPrice);
             await expect(purchaseResult).to.emit(nft, "Sold");
             for (var i = 1; i <= iterations; i++) {
                 await expect(nft.getSale(nftIds[i])).to.be.reverted;
@@ -258,13 +262,86 @@ describe("NFTSale Test", async () => {
             const totalPrice = prices.reduce((a, b) => a + b);
             var approvallResult = await voxel.connect(accounts3).approve(nft.address, totalPrice);
             await expect(approvallResult).to.emit(voxel, "Approval");
-            var purchaseResult = await nft
-                .connect(accounts3)
-                .purchaseNFTBatch(nftIds, totalPrice);
+            var purchaseResult = await nft.connect(accounts3).purchaseNFTBatch(nftIds, totalPrice);
             await expect(purchaseResult).to.emit(nft, "Sold");
             for (var i = 1; i <= iterations; i++) {
                 await expect(nft.getSale(nftIds[i])).to.be.reverted;
             }
+        });
+        it("can sign messages and verify", async () => {
+            let name = "NFTSale";
+            let chainId = (await nft.getChainId()).toString();
+            let version = "1";
+            let domainData = {
+                name: name,
+                version: version,
+                verifyingContract: nft.address,
+                salt: "0x" + parseInt(chainId).toString(16).padStart(64, "0"),
+            };
+            const domainType = [
+                {
+                    name: "name",
+                    type: "string",
+                },
+                {
+                    name: "version",
+                    type: "string",
+                },
+                {
+                    name: "verifyingContract",
+                    type: "address",
+                },
+                {
+                    name: "salt",
+                    type: "bytes32",
+                },
+            ];
+            const offerType = [
+                {
+                    name: "buyer",
+                    type: "address",
+                },
+                {
+                    name: "price",
+                    type: "uint256",
+                },
+                {
+                    name: "listingId",
+                    type: "uint256",
+                },
+            ];
+            const addr = await accounts2.getAddress();
+            console.log(addr);
+            let message = {
+                buyer: addr,
+                price: 400,
+                listingId: 1,
+            };
+            const dataToSign = {
+                types: {
+                    EIP712Domain: domainType,
+                    Offer: offerType,
+                },
+                domain: domainData,
+                primaryType: "Offer",
+                message: message,
+            };
+            const signature = sigUtil.signTypedData({
+                privateKey: Buffer.from(
+                    "5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+                    "hex"
+                ),
+                data: dataToSign,
+                version: sigUtil.SignTypedDataVersion.V3,
+            });
+            let r = signature.slice(0, 66);
+            let s = "0x".concat(signature.slice(66, 130));
+            let V = "0x".concat(signature.slice(130, 132));
+            let v = parseInt(V);
+
+            if (![27, 28].includes(v)) v += 27;
+
+            var offerAccept = await nft.connect(accounts1).acceptOffer(addr, 400, 1, r, s, v);
         });
     });
 });

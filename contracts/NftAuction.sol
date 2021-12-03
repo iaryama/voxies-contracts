@@ -275,6 +275,10 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         emit AuctionCancelled(_auctionId, _msgSender());
     }
 
+    function getBundledNFTs(uint256 _auctionId) public view returns (address[] memory, uint256[] memory) {
+        return (auctions[_auctionId].nftAddresses, auctions[_auctionId].tokenIDs);
+    }
+
     function onERC721Received(
         address operator,
         address from,

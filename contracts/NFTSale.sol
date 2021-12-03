@@ -8,20 +8,36 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+import "./utils/EIP712Base.sol";
 
 interface INFTEngine {
     function creatorOfNft(uint256 creator) external view returns (address);
 }
 
 // NFTSale SMART CONTRACT
-contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
+contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard, EIP712Base {
     using Address for address;
     using SafeERC20 for IERC20;
+    using Counters for Counters.Counter;
 
     IERC20 public immutable voxel;
 
     address public immutable nftAddress;
     bool public isActive;
+
+    bytes32 private constant OFFER_TYPEHASH = keccak256(bytes("Offer(address buyer,uint256 price,uint256 listingId)"));
+
+    struct Listing {
+        uint256 listingId;
+        uint256 nftCount;
+        address[] nftAddresses;
+        uint256[] tokenIDs;
+        uint256 price;
+        address owner;
+        bool isActive;
+        bool isCancelled;
+    }
 
     struct Sale {
         uint256 nftId;
@@ -30,6 +46,14 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
         bool isActive;
         bool isCancelled;
     }
+
+    struct Offer {
+        address buyer;
+        uint256 price;
+        uint256 listingId;
+    }
+
+    Counters.Counter public _listingIds;
 
     // nftId => Sale mapping
     mapping(uint256 => Sale) public _nftSales;
@@ -57,6 +81,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
     constructor(address _nftAddress, IERC20 _voxel) {
         require(_nftAddress.isContract(), "_nftAddress must be a contract");
         __Ownable_init();
+        _initializeEIP712("NFTSale", "1");
         nftAddress = _nftAddress;
         voxel = _voxel;
     }
@@ -274,6 +299,33 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
             uint256 nftId = nftIds[i];
             _purchaseNFT(nftId);
         }
+    }
+
+    function hashMetaTransaction(Offer memory offer) internal pure returns (bytes32) {
+        return keccak256(abi.encode(OFFER_TYPEHASH, offer.buyer, offer.price, offer.listingId));
+    }
+
+    function verify(
+        address signer,
+        Offer memory offer,
+        bytes32 sigR,
+        bytes32 sigS,
+        uint8 sigV
+    ) internal view returns (bool) {
+        require(signer != address(0), "NativeMetaTransaction: INVALID_SIGNER");
+        return signer == ecrecover(toTypedMessageHash(hashMetaTransaction(offer)), sigV, sigR, sigS);
+    }
+
+    function acceptOffer(
+        address offerSender,
+        uint256 amount,
+        uint256 listingId,
+        bytes32 sigR,
+        bytes32 sigS,
+        uint8 sigV
+    ) external {
+        Offer memory offer = Offer({ buyer: offerSender, price: amount, listingId: listingId });
+        require(verify(offerSender, offer, sigR, sigS, sigV), "Signer and signature do not match");
     }
 
     // @TODO Batch Purchase
