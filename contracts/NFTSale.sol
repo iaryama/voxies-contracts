@@ -301,7 +301,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard, EIP712
         }
     }
 
-    function hashMetaTransaction(Offer memory offer) internal pure returns (bytes32) {
+    function hashOffer(Offer memory offer) internal pure returns (bytes32) {
         return keccak256(abi.encode(OFFER_TYPEHASH, offer.buyer, offer.price, offer.listingId));
     }
 
@@ -313,7 +313,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard, EIP712
         uint8 sigV
     ) internal view returns (bool) {
         require(signer != address(0), "NativeMetaTransaction: INVALID_SIGNER");
-        return signer == ecrecover(toTypedMessageHash(hashMetaTransaction(offer)), sigV, sigR, sigS);
+        return signer == ecrecover(toTypedMessageHash(hashOffer(offer)), sigV, sigR, sigS);
     }
 
     function acceptOffer(
