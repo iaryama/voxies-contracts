@@ -311,6 +311,8 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
         bytes32 sigS,
         uint8 sigV
     ) external nonReentrant {
+        require(_percentageRewards < 100, "Percentage cannot be more than 100");
+        require(_timePeriod >= minLoanPeriod && _timePeriod <= maxLoanPeriod, "Incorrect loan time period specified");
         require(loanItems[_loanId].owner == _msgSender(), "Only loan owner can issue loan");
         require(_msgSender() != _loanee, "loaner cannot be loanee");
         require(loanItems[_loanId].loanee == address(0), "Loan Item is already loaned");
