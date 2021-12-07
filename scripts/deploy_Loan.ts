@@ -35,7 +35,7 @@ async function deploy() {
         if ((process.env.TRUSTED_FORWARDER_ADDRESS as string) != null) {
             const tokenArtifact = await artifacts.readArtifact("Loan");
 
-            const loanToken = Loan.attach("0x716c0d8732b33a2a1E385B4a1Bdf75CdeCE96E56") as Loan;
+            const loanToken = Loan.attach(loan.address) as Loan;
 
             const receipt = await loanToken.setTrustedForwarder(
                 process.env.TRUSTED_FORWARDER_ADDRESS as string
