@@ -1,5 +1,6 @@
 import { ethers, network } from "hardhat";
 import { Signer, BigNumber } from "ethers";
+const sigUtil = require("@metamask/eth-sig-util");
 import {
     Voxel,
     Voxel__factory,
@@ -20,6 +21,7 @@ describe("Loaning Tests", async () => {
         accounts3: Signer,
         accounts4: Signer,
         accounts5: Signer,
+        accounts6: Signer,
         voxelFactory: Voxel__factory,
         voxel: Voxel,
         loanFactory: Loan__factory,
@@ -37,6 +39,10 @@ describe("Loaning Tests", async () => {
         loanFactory = (await ethers.getContractFactory("Loan")) as Loan__factory;
         loan = await loanFactory.deploy([], voxel.address);
         [owner, accounts1, accounts2, accounts3, accounts4, accounts5] = await ethers.getSigners();
+        accounts6 = new ethers.Wallet(
+            "c0bbcfa11e989db401daadb9a01ee46e7d337a740388f4ef41ed0ab8a18a1ff9",
+            ethers.provider
+        );
         vox.addToWhitelist(loan.address);
         nullAddress = ethers.utils.getAddress("0x0000000000000000000000000000000000000000");
     });
@@ -56,7 +62,7 @@ describe("Loaning Tests", async () => {
     //Contract Address is not whitelisted'
 
     describe("Functionality Tests", async () => {
-        let nftIds: BigNumber[], loanId: BigNumber;
+        let nftIds: BigNumber[], loanId: BigNumber, loanId3: BigNumber;
         before(async () => {
             const nftOwner = await accounts1.getAddress();
             expect(loan.allowNFTContract(vox.address, true));
@@ -133,11 +139,13 @@ describe("Loaning Tests", async () => {
         describe("Loaning, Rewarding Listed Loan Items", async () => {
             let nftIds2: BigNumber[],
                 nftIds3: BigNumber[],
+                nftIds4: BigNumber[],
                 ownerAddress: string,
                 account2Address: string,
                 account1Address: string,
                 account3Address: string,
-                loanId2: BigNumber;
+                loanId2: BigNumber,
+                loanId3: BigNumber;
             const createLoanableItemParams = async (
                 account: Signer,
                 _nftIds: BigNumber[],
@@ -185,22 +193,36 @@ describe("Loaning Tests", async () => {
                 account3Address = await accounts3.getAddress();
                 await voxel.connect(owner).transfer(account2Address, 1000);
                 await voxel.connect(accounts2).approve(loan.address, 1000);
+                await owner.sendTransaction({
+                    to: await accounts6.getAddress(),
+                    value: ethers.utils.parseEther("1.0"), // Sends exactly 1.0 ether
+                });
+                await voxel.connect(owner).transfer(await accounts5.getAddress(), 1000);
+                await voxel.connect(accounts5).approve(loan.address, 1000);
                 await voxel.connect(owner).approve(loan.address, 1000);
                 nftIds2 = [];
                 nftIds3 = [];
+                nftIds4 = [];
                 for (var i = 1; i <= iterations; i++) {
-                    const hash = `ipfs-hash-user1-${i + 20}`;
-                    const nftId = await vox.callStatic.issueToken(account3Address, hash);
+                    var hash = `ipfs-hash-user1-${i + 20}`;
+                    var nftId = await vox.callStatic.issueToken(account3Address, hash);
                     await vox.issueToken(account3Address, hash);
                     await vox.connect(accounts3).approve(loan.address, nftId);
                     nftIds2.push(nftId);
                 }
                 for (var i = 1; i <= iterations; i++) {
-                    const hash = `ipfs-hash-user1-${i + 60}`;
-                    const nftId = await vox.callStatic.issueToken(ownerAddress, hash);
+                    var hash = `ipfs-hash-user1-${i + 60}`;
+                    var nftId = await vox.callStatic.issueToken(ownerAddress, hash);
                     await vox.issueToken(ownerAddress, hash);
                     await vox.connect(owner).approve(loan.address, nftId);
                     nftIds3.push(nftId);
+                }
+                for (var i = 1; i <= iterations; i++) {
+                    var hash = `ipfs-hash-user1-${i + 1000}`;
+                    var nftId = await vox.callStatic.issueToken(await accounts4.getAddress(), hash);
+                    await vox.issueToken(await accounts4.getAddress(), hash);
+                    await vox.connect(accounts4).approve(loan.address, nftId);
+                    nftIds4.push(nftId);
                 }
             });
             it("loaner can create a reservable loan Item", async () => {
@@ -279,10 +301,6 @@ describe("Loaning Tests", async () => {
                 for (var i = 0; i < nftIds.length; i++) {
                     expect(await vox.ownerOf(nftIds[i].toBigInt())).to.be.equal(loan.address);
                 }
-            });
-            it("listed loanable item should not be active", async () => {
-                const loanItem = await loan.loanItems(loanId);
-                expect(loanItem.isActive).to.be.equal(false);
             });
             it("loanee should be able to loan item", async () => {
                 await expect(loan.connect(accounts2).loanItem(loanId)).to.emit(loan, "LoanIssued");
@@ -471,13 +489,147 @@ describe("Loaning Tests", async () => {
             });
             it("loaner cannot loan inactive loan", async () => {
                 expect(loan.connect(accounts2).loanItem(loanId)).to.be.revertedWith(
-                    "NFTs already claimed, cannot issue loan"
+                    "Loan Item is already loaned"
                 );
                 expect(loan.connect(owner).addERC20Rewards(loanId, 100)).to.be.revertedWith(
                     "Inactive loan item"
                 );
             });
+            it("can sign messages and verify", async () => {
+                loanId3 = await loan
+                    .connect(accounts4)
+                    .callStatic.createLoanableItem(
+                        nftAddresses,
+                        nftIds4,
+                        100,
+                        13,
+                        60480,
+                        await accounts5.getAddress(),
+                        1
+                    );
+                await expect(
+                    loan
+                        .connect(accounts4)
+                        .createLoanableItem(
+                            nftAddresses,
+                            nftIds4,
+                            100,
+                            13,
+                            60480,
+                            await accounts5.getAddress(),
+                            1
+                        )
+                )
+                    .to.emit(loan, "LoanableItemCreated")
+                    .withArgs(
+                        await accounts4.getAddress(),
+                        nftAddresses,
+                        nftIds4,
+                        loanId3,
+                        await accounts5.getAddress(),
+                        1
+                    );
+                let name = "Loan";
+                let chainId = (await loan.getChainId()).toString();
+                let version = "1";
+                let domainData = {
+                    name: name,
+                    version: version,
+                    verifyingContract: loan.address,
+                    salt: "0x" + parseInt(chainId).toString(16).padStart(64, "0"),
+                };
+                const domainType = [
+                    {
+                        name: "name",
+                        type: "string",
+                    },
+                    {
+                        name: "version",
+                        type: "string",
+                    },
+                    {
+                        name: "verifyingContract",
+                        type: "address",
+                    },
+                    {
+                        name: "salt",
+                        type: "bytes32",
+                    },
+                ];
+                const offerType = [
+                    {
+                        name: "loanId",
+                        type: "uint256",
+                    },
+                    {
+                        name: "loanee",
+                        type: "address",
+                    },
+                    {
+                        name: "upfrontFee",
+                        type: "uint256",
+                    },
+                    {
+                        name: "percentageRewards",
+                        type: "uint8",
+                    },
+                    {
+                        name: "timePeriod",
+                        type: "uint256",
+                    },
+                    {
+                        name: "claimer",
+                        type: "bool",
+                    },
+                ];
+                let message = {
+                    loanId: loanId3.toNumber(),
+                    loanee: await accounts5.getAddress(),
+                    upfrontFee: 200,
+                    percentageRewards: 30,
+                    timePeriod: 60470,
+                    claimer: true,
+                };
+                const dataToSign = {
+                    types: {
+                        EIP712Domain: domainType,
+                        Offer: offerType,
+                    },
+                    domain: domainData,
+                    primaryType: "Offer",
+                    message: message,
+                };
+                const signature = sigUtil.signTypedData({
+                    privateKey: Buffer.from(
+                        "8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
+                        "hex"
+                    ),
+                    data: dataToSign,
+                    version: sigUtil.SignTypedDataVersion.V3,
+                });
+                let r = signature.slice(0, 66);
+                let s = "0x".concat(signature.slice(66, 130));
+                let V = "0x".concat(signature.slice(130, 132));
+                let v = parseInt(V);
+
+                if (![27, 28].includes(v)) v += 27;
+
+                await loan
+                    .connect(accounts4)
+                    .issueLoan(loanId3, await accounts5.getAddress(), 200, 30, 60470, true, r, s, v);
+
+                expect((await loan.loanItems(loanId3)).upfrontFee).to.equal(200);
+                expect((await loan.loanItems(loanId3)).percentageRewards).to.equal(30);
+                expect((await loan.loanItems(loanId3)).timePeriod).to.equal(60470);
+                expect((await loan.loanItems(loanId3)).claimer).to.equal(0);
+                expect((await loan.loanItems(loanId3)).loanee).to.be.equal(await accounts5.getAddress());
+                expect(
+                    await loan.hasAccessToNFT(nftAddresses[0], nftIds4[0], await accounts5.getAddress())
+                ).to.be.equal(true);
+                expect(
+                    await loan.hasAccessToNFT(nftAddresses[0], nftIds4[0], await accounts4.getAddress())
+                ).to.be.equal(false);
+            });
         });
     });
 });
-0;
