@@ -173,7 +173,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
 
         for (uint256 i = 0; i < _nftIds.length; i++) {
             _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] = newAuctionId;
-            IERC721(_nftAddresses[i]).safeTransferFrom(_msgSender(), address(this), _nftIds[i]);
+            IERC721(_nftAddresses[i]).transferFrom(_msgSender(), address(this), _nftIds[i]);
         }
 
         emit NewAuctionOpened(
@@ -237,7 +237,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
         address[] memory _nftAddresses = auctions[_auctionId].nftAddresses;
         for (uint256 i = 0; i < _nftIds.length; i++) {
-            IERC721(_nftAddresses[i]).safeTransferFrom(address(this), _msgSender(), _nftIds[i]);
+            IERC721(_nftAddresses[i]).transferFrom(address(this), _msgSender(), _nftIds[i]);
         }
 
         emit BoughtNFTInDutchAuction(_auctionId, auctions[_auctionId].highestBid, auctions[_auctionId].highestBidder);
@@ -257,7 +257,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
         address[] memory _nftAddresses = auctions[_auctionId].nftAddresses;
         for (uint256 i = 0; i < _nftIds.length; i++) {
-            IERC721(_nftAddresses[i]).safeTransferFrom(address(this), auctions[_auctionId].highestBidder, _nftIds[i]);
+            IERC721(_nftAddresses[i]).transferFrom(address(this), auctions[_auctionId].highestBidder, _nftIds[i]);
         }
 
         auctions[_auctionId].isActive = false;
