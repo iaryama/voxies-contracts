@@ -276,7 +276,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
         address[] memory _nftAddresses = auctions[_auctionId].nftAddresses;
         for (uint256 i = 0; i < _nftIds.length; i++) {
-            _nftToAuctionBundle[_nftAddresses[i]][_nftIds[i]] = 0;
+            _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] = 0;
             IERC721(_nftAddresses[i]).transferFrom(address(this), auctions[_auctionId].originalOwner, _nftIds[i]);
         }
 

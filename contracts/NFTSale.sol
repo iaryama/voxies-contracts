@@ -5,14 +5,14 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "./utils/EIP712Base.sol";
 import "./utils/BaseRelayRecipient.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseRelayRecipient {
+contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseRelayRecipient {
     using Address for address;
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
@@ -61,7 +61,6 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard, EIP712
     );
 
     constructor(IERC20 _voxel) {
-        __Ownable_init();
         _initializeEIP712("NFTSale", "1");
         voxel = _voxel;
     }
@@ -130,7 +129,7 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard, EIP712
         Listing memory listing = Listing(
             listingId,
             _nftAddresses.length,
-            _nftAddress,
+            _nftAddresses,
             _nftIds,
             price,
             _msgSender(),
@@ -163,8 +162,8 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard, EIP712
         uint256[] memory _nftIds = listings[_listingId].tokenIDs;
         address[] memory _nftAddresses = listings[_listingId].nftAddresses;
         for (uint256 i = 0; i < _nftIds.length; i++) {
-            _nftToListingBundle[_nftAddresses[i]][_nftIds[i]] = 0;
-            IERC721(_nftAddresses[i]).transferFrom(address(this), listing[_listingId].owner, _nftIds[i]);
+            _nftToListingId[_nftAddresses[i]][_nftIds[i]] = 0;
+            IERC721(_nftAddresses[i]).transferFrom(address(this), listings[_listingId].owner, _nftIds[i]);
         }
         emit ListingCancelled(_listingId, _msgSender(), block.timestamp);
     }
