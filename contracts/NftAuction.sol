@@ -237,6 +237,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
         address[] memory _nftAddresses = auctions[_auctionId].nftAddresses;
         for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] = 0;
             IERC721(_nftAddresses[i]).transferFrom(address(this), _msgSender(), _nftIds[i]);
         }
 
@@ -257,6 +258,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
         address[] memory _nftAddresses = auctions[_auctionId].nftAddresses;
         for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] = 0;
             IERC721(_nftAddresses[i]).transferFrom(address(this), auctions[_auctionId].highestBidder, _nftIds[i]);
         }
 
@@ -270,7 +272,13 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         require(auctions[_auctionId].startBid == auctions[_auctionId].highestBid, "Bids were placed in the Auction");
         require(auctions[_auctionId].originalOwner == _msgSender(), "You are not the creator of Auction");
         auctions[_auctionId].isActive = false;
-        delete auctions[_auctionId];
+
+        uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
+        address[] memory _nftAddresses = auctions[_auctionId].nftAddresses;
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToAuctionBundle[_nftAddresses[i]][_nftIds[i]] = 0;
+            IERC721(_nftAddresses[i]).transferFrom(address(this), auctions[_auctionId].originalOwner, _nftIds[i]);
+        }
 
         emit AuctionCancelled(_auctionId, _msgSender());
     }
