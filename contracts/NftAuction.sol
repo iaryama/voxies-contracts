@@ -73,9 +73,10 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
     uint256 public balances;
 
     event NewAuctionOpened(
+        uint256 indexed auctionId,
         AuctionType indexed orderType,
-        address[] indexed nftAddresses,
-        uint256[] indexed nftIds,
+        address[] nftAddresses,
+        uint256[] nftIds,
         uint256 startingBid,
         uint256 closingTime,
         address originalOwner
@@ -177,6 +178,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         }
 
         emit NewAuctionOpened(
+            newAuctionId,
             _orderType,
             _nftAddresses,
             _nftIds,

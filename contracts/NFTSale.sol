@@ -96,6 +96,11 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
         emit ContractStatusSet(_msgSender(), _isActive);
     }
 
+    function setNFTContractStatus(address _nftAddress, bool _enabled) external onlyAdmin {
+        require(_nftAddress.isContract(), "Given NFT Address must be a contract");
+        allowedNFTAddresses[_nftAddress] = _enabled;
+    }
+
     /**
      * Sell NFT Bundle
      *
