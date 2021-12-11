@@ -588,7 +588,7 @@ describe("Loaning Tests", async () => {
                     upfrontFee: 200,
                     percentageRewards: 30,
                     timePeriod: 60470,
-                    claimer: true,
+                    claimer: false,
                 };
                 const dataToSign = {
                     types: {
@@ -614,14 +614,23 @@ describe("Loaning Tests", async () => {
 
                 if (![27, 28].includes(v)) v += 27;
 
-                await loan
-                    .connect(accounts4)
-                    .issueLoan(loanId3, await accounts5.getAddress(), 200, 30, 60470, true, r, s, v);
+                var offer = {
+                    loanId: loanId3,
+                    loanee: await accounts5.getAddress(),
+                    upfrontFee: BigNumber.from(200),
+                    percentageRewards: 30,
+                    timePeriod: BigNumber.from(60470),
+                    claimer: false,
+                };
+
+                // loanItem.push({"nftAddresses":nftAddresses})
+
+                await loan.connect(accounts4).issueLoan(offer, r, s, v);
 
                 expect((await loan.loanItems(loanId3)).upfrontFee).to.equal(200);
                 expect((await loan.loanItems(loanId3)).percentageRewards).to.equal(30);
                 expect((await loan.loanItems(loanId3)).timePeriod).to.equal(60470);
-                expect((await loan.loanItems(loanId3)).claimer).to.equal(0);
+                expect((await loan.loanItems(loanId3)).claimer).to.equal(1);
                 expect((await loan.loanItems(loanId3)).loanee).to.be.equal(await accounts5.getAddress());
                 expect(
                     await loan.hasAccessToNFT(nftAddresses[0], nftIds4[0], await accounts5.getAddress())
