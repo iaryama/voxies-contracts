@@ -72,6 +72,9 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
     using SafeERC20 for IERC20;
     uint256 public balances;
 
+    address public treasuryAddress;
+    uint256 public treasuryPercentage;
+
     event NewAuctionOpened(
         uint256 indexed auctionId,
         AuctionType indexed orderType,
@@ -90,13 +93,39 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
 
     event AuctionCancelled(uint256 indexed auctionId, address indexed cancelledBy);
 
-    constructor(IERC20 _voxel) {
+    constructor(
+        IERC20 _voxel,
+        address _treasuryAddress,
+        uint256 _treasuryPercentage
+    ) {
         voxel = _voxel;
+        treasuryAddress = _treasuryAddress;
+        treasuryPercentage = _treasuryPercentage; // represented as a 2 decimal number i.e. 125 = 1.25%
     }
 
     function setNFTContractStatus(address _nftAddress, bool _enabled) external onlyAdmin {
         require(_nftAddress.isContract(), "Given NFT Address must be a contract");
         allowedNFTAddresses[_nftAddress] = _enabled;
+    }
+
+    function setTreasuryAddress(address _treasuryAddress) external onlyAdmin {
+        require(!_treasuryAddress.isContract(), "Treasury Address must not be a contract");
+        treasuryAddress = _treasuryAddress;
+    }
+
+    function setTreasuryPercentage(uint256 _treasuryPercentage) external onlyAdmin {
+        require(treasuryPercentage >= 0, "treasuryPercentage has to be greater than or equal to 0");
+        treasuryPercentage = _treasuryPercentage;
+    }
+
+    function transferWithTreasury(
+        address _from,
+        address _to,
+        uint256 _amount
+    ) internal {
+        treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
+        voxel.safeTransferFrom(_from, treasuryAddress, treasuryFee);
+        voxel.safeTransferFrom(_from, _to, _amount - treasuryFee);
     }
 
     function getCurrentPrice(uint256 _auctionId, AuctionType orderType) public view returns (uint256) {
@@ -203,7 +232,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
             auctions[_auctionId].closingTime += 60;
         }
 
-        voxel.safeTransferFrom(_msgSender(), address(this), _amount);
+        transferWithTreasury(_msgSender(), address(this), _amount);
         //transferring bid amount to previous highest bidder
         if (auctions[_auctionId].originalOwner != auctions[_auctionId].highestBidder) {
             voxel.safeTransfer(auctions[_auctionId].highestBidder, auctions[_auctionId].highestBid);
@@ -232,8 +261,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         auctions[_auctionId].isSold = true;
 
         // transferring price to seller of nft
-        voxel.safeTransferFrom(_msgSender(), seller, currentPrice);
-        //voxel.safeTransferFrom(_msgSender(), address(this), _amount);
+        transferWithTreasury(_msgSender(), seller, currentPrice);
 
         //transferring nft to highest bidder
         uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
@@ -254,7 +282,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         address seller = auctions[_auctionId].originalOwner;
 
         //sending price to seller of nft
-        voxel.safeTransfer(seller, auctions[_auctionId].highestBid);
+        transferWithTreasury(_msgSender(), seller, auctions[_auctionId].highestBid);
 
         //transferring nft to highest bidder
         uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;

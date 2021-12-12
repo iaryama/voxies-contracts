@@ -48,6 +48,9 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
     mapping(address => bool) private _admins;
     mapping(uint256 => Listing) public listings;
 
+    address public treasuryAddress;
+    uint256 public treasuryPercentage;
+
     event ContractStatusSet(address indexed _admin, bool indexed _isActive);
     event AdminAccessSet(address indexed _admin, bool indexed _enabled);
     event ListingAdded(uint256 indexed _listingId, uint256 indexed _price, address indexed _owner, uint256 _timestamp);
@@ -60,9 +63,15 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
         uint256 _timestamp
     );
 
-    constructor(IERC20 _voxel) {
+    constructor(
+        IERC20 _voxel,
+        address _treasuryAddress,
+        uint256 _treasuryPercentage
+    ) {
         _initializeEIP712("NFTSale", "1");
         voxel = _voxel;
+        treasuryAddress = _treasuryAddress;
+        treasuryPercentage = _treasuryPercentage; // represented as a 2 decimal number i.e. 125 = 1.25%
     }
 
     /**
@@ -99,6 +108,26 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
     function setNFTContractStatus(address _nftAddress, bool _enabled) external onlyAdmin {
         require(_nftAddress.isContract(), "Given NFT Address must be a contract");
         allowedNFTAddresses[_nftAddress] = _enabled;
+    }
+
+    function setTreasuryAddress(address _treasuryAddress) external onlyAdmin {
+        require(!_treasuryAddress.isContract(), "Treasury Address must not be a contract");
+        treasuryAddress = _treasuryAddress;
+    }
+
+    function setTreasuryPercentage(uint256 _treasuryPercentage) external onlyAdmin {
+        require(treasuryPercentage >= 0, "treasuryPercentage has to be greater than or equal to 0");
+        treasuryPercentage = _treasuryPercentage;
+    }
+
+    function transferWithTreasury(
+        address _from,
+        address _to,
+        uint256 _amount
+    ) internal {
+        treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
+        voxel.safeTransferFrom(_from, treasuryAddress, treasuryFee);
+        voxel.safeTransferFrom(_from, _to, _amount - treasuryFee);
     }
 
     /**
@@ -192,7 +221,7 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
         address[] memory _nftAddresses = listings[_listingId].nftAddresses;
 
         // Transfer the Voxel Tokens
-        voxel.safeTransferFrom(buyer, seller, price);
+        transferWithTreasury(buyer, seller, price);
 
         // Transfer the NFTs to the buyer
         for (uint256 i = 0; i < _nftIds.length; i++) {
@@ -226,7 +255,7 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
         uint8 sigV
     ) external {
         Offer memory offer = Offer({ buyer: offerSender, price: amount, listingId: listingId });
-        require(verify(offerSender, offer, sigR, sigS, sigV), "Signer and signature do not match");
+        require(verify(offerSender, offer, sigR, sigS, sigV), "Signature data and Offer data do not match");
     }
 
     function onERC721Received(
