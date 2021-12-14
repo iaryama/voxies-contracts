@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "./utils/AccessProtected.sol";
 import "./utils/BaseRelayRecipient.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 interface IVoxelNFT {
     function issueToken(
@@ -36,6 +37,7 @@ interface IVoxelNFT {
 contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRelayRecipient {
     using Address for address;
     using Counters for Counters.Counter;
+    using SafeMath for uint256;
 
     struct Auction {
         uint256 auctionID;
@@ -67,6 +69,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
     //AuctionType orderType;
 
     mapping(uint256 => Auction) public auctions;
+    mapping(address => mapping(uint256 => uint256)) public claimableFunds; // User address -> AuctionID -> amount claimable
 
     IERC20 public immutable voxel;
     using SafeERC20 for IERC20;
@@ -123,7 +126,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         address _to,
         uint256 _amount
     ) internal {
-        treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
+        uint256 treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
         voxel.safeTransferFrom(_from, treasuryAddress, treasuryFee);
         voxel.safeTransferFrom(_from, _to, _amount - treasuryFee);
     }
@@ -231,12 +234,16 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         if (auctions[_auctionId].closingTime - block.timestamp <= 600) {
             auctions[_auctionId].closingTime += 60;
         }
+        // Lock Additional funds only if the user has made a bid before on the same auction
+        uint256 lockedFunds = claimableFunds[_msgSender()][_auctionId];
+        uint256 toLock = _amount.sub(lockedFunds);
+        voxel.safeTransferFrom(_msgSender(), address(this), toLock);
+        claimableFunds[_msgSender()][_auctionId] = 0;
 
-        transferWithTreasury(_msgSender(), address(this), _amount);
-        //transferring bid amount to previous highest bidder
-        if (auctions[_auctionId].originalOwner != auctions[_auctionId].highestBidder) {
-            voxel.safeTransfer(auctions[_auctionId].highestBidder, auctions[_auctionId].highestBid);
-        }
+        // Make previous highest bidder's funds claimable
+        claimableFunds[auctions[_auctionId].highestBidder][_auctionId] = auctions[_auctionId].highestBid;
+
+        // Make current bidder the highest bidder
         auctions[_auctionId].highestBid = _amount;
         auctions[_auctionId].highestBidder = _msgSender();
         emit BidPlacedInEnglishAuction(_auctionId, auctions[_auctionId].highestBid, auctions[_auctionId].highestBidder);
@@ -282,7 +289,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         address seller = auctions[_auctionId].originalOwner;
 
         //sending price to seller of nft
-        transferWithTreasury(_msgSender(), seller, auctions[_auctionId].highestBid);
+        transferWithTreasury(address(this), seller, auctions[_auctionId].highestBid);
 
         //transferring nft to highest bidder
         uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
@@ -294,6 +301,14 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
 
         auctions[_auctionId].isActive = false;
         emit EnglishAuctionClosed(_auctionId, auctions[_auctionId].highestBid, auctions[_auctionId].highestBidder);
+    }
+
+    function claimFundsFromEnglishAuction(uint256 _auctionId) external nonReentrant {
+        address sender = _msgSender();
+        uint256 claimable = claimableFunds[sender][_auctionId];
+        require(claimable > 0, "No funds to claim for this auction ID");
+        voxel.safeTransferFrom(address(this), sender, claimable);
+        claimableFunds[sender][_auctionId] = 0;
     }
 
     function cancelAuction(uint256 _auctionId) external nonReentrant {
