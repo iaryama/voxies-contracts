@@ -11,16 +11,19 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 import "./utils/EIP712Base.sol";
 import "./utils/BaseRelayRecipient.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseRelayRecipient {
     using Address for address;
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
+    using SafeMath for uint256;
 
     IERC20 public immutable voxel;
     bool public isActive;
 
-    bytes32 private constant OFFER_TYPEHASH = keccak256(bytes("Offer(address buyer,uint256 price,uint256 listingId)"));
+    bytes32 private constant OFFER_TYPEHASH =
+        keccak256(bytes("Offer(address buyer,uint256 price,uint256 listingId,uint256 timestamp,uint256 expiryTime)"));
 
     struct Listing {
         uint256 listingId;
@@ -37,6 +40,8 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
         address buyer;
         uint256 price;
         uint256 listingId;
+        uint256 timestamp;
+        uint256 expiryTime;
     }
 
     Counters.Counter public _listingIds;
@@ -47,13 +52,21 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
     // user address => admin? mapping
     mapping(address => bool) private _admins;
     mapping(uint256 => Listing) public listings;
+    mapping(bytes32 => bool) private cancelledOffers;
 
     address public treasuryAddress;
     uint256 public treasuryPercentage;
 
     event ContractStatusSet(address indexed _admin, bool indexed _isActive);
     event AdminAccessSet(address indexed _admin, bool indexed _enabled);
-    event ListingAdded(uint256 indexed _listingId, uint256 indexed _price, address indexed _owner, uint256 _timestamp);
+    event ListingAdded(
+        uint256 indexed _listingId,
+        uint256 indexed _price,
+        address indexed _owner,
+        address[] nftAddresses,
+        uint256[] nftIds,
+        uint256 _timestamp
+    );
     event ListingCancelled(uint256 indexed _listingId, address indexed _owner, uint256 _timestamp);
     event Sold(
         uint256 indexed _listingId,
@@ -125,7 +138,7 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
         address _to,
         uint256 _amount
     ) internal {
-        treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
+        uint256 treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
         voxel.safeTransferFrom(_from, treasuryAddress, treasuryFee);
         voxel.safeTransferFrom(_from, _to, _amount - treasuryFee);
     }
@@ -171,7 +184,7 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
             false
         );
         listings[listingId] = listing;
-        emit ListingAdded(listingId, price, _msgSender(), block.timestamp);
+        emit ListingAdded(listingId, price, _msgSender(), _nftAddresses, _nftIds, block.timestamp);
     }
 
     /**
@@ -232,7 +245,10 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
     }
 
     function hashOffer(Offer memory offer) internal pure returns (bytes32) {
-        return keccak256(abi.encode(OFFER_TYPEHASH, offer.buyer, offer.price, offer.listingId));
+        return
+            keccak256(
+                abi.encode(OFFER_TYPEHASH, offer.buyer, offer.price, offer.listingId, offer.timestamp, offer.expiryTime)
+            );
     }
 
     function verify(
@@ -250,12 +266,66 @@ contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseR
         address offerSender,
         uint256 amount,
         uint256 listingId,
+        uint256 timestamp,
+        uint256 expiryTime,
         bytes32 sigR,
         bytes32 sigS,
         uint8 sigV
     ) external {
-        Offer memory offer = Offer({ buyer: offerSender, price: amount, listingId: listingId });
+        Offer memory offer = Offer({
+            buyer: offerSender,
+            price: amount,
+            listingId: listingId,
+            timestamp: timestamp,
+            expiryTime: expiryTime
+        });
         require(verify(offerSender, offer, sigR, sigS, sigV), "Signature data and Offer data do not match");
+        require(!cancelledOffers[hashOffer(offer)], "This offer has been cancelled");
+        require(block.timestamp <= expiryTime, "Offer has expired");
+        require(isActive, "Sale Contract Status in not Active");
+        require(!listings[listingId].isSold, "Listing is already sold");
+        require(listings[listingId].isActive, "Listing is inactive");
+        address seller = listings[listingId].owner;
+        require(_msgSender() == seller, "Offer can only be accepted by the listing owner");
+        listings[listingId].isSold = true;
+        listings[listingId].isActive = false;
+        uint256[] memory _nftIds = listings[listingId].tokenIDs;
+        address[] memory _nftAddresses = listings[listingId].nftAddresses;
+
+        // Transfer the Voxel Tokens
+        transferWithTreasury(offerSender, seller, amount);
+
+        // Transfer the NFTs to the buyer
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToListingId[_nftAddresses[i]][_nftIds[i]] = 0;
+            IERC721(_nftAddresses[i]).transferFrom(address(this), offerSender, _nftIds[i]);
+        }
+        emit Sold(listingId, seller, offerSender, amount, block.timestamp);
+    }
+
+    function cancelOffer(
+        address offerSender,
+        uint256 amount,
+        uint256 listingId,
+        uint256 timestamp,
+        uint256 expiryTime,
+        bytes32 sigR,
+        bytes32 sigS,
+        uint8 sigV
+    ) external {
+        Offer memory offer = Offer({
+            buyer: offerSender,
+            price: amount,
+            listingId: listingId,
+            timestamp: timestamp,
+            expiryTime: expiryTime
+        });
+        require(verify(offerSender, offer, sigR, sigS, sigV), "Signature data and Offer data do not match");
+        require(offerSender == _msgSender(), "Only offer owner can cancel it");
+        bytes32 offerHash = hashOffer((offer));
+        if (!cancelledOffers[offerHash]) {
+            cancelledOffers[offerHash] = true;
+        }
     }
 
     function onERC721Received(
