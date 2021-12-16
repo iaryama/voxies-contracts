@@ -26,13 +26,15 @@ describe("Nft Auction Test", async () => {
 
     before(async () => {
         voxelFactory = await ethers.getContractFactory("Voxel");
-        voxel = await voxelFactory.deploy();
+        voxel = await voxelFactory.deploy(300000000, "Voxel Token", "VOXEL");
         voxelEngine = await ethers.getContractFactory("VoxiesNFTEngine");
         vox = await voxelEngine.deploy("VoxelNFT", "VOX");
         nftAuction = await ethers.getContractFactory("NftAuction");
-        auction = await nftAuction.deploy(voxel.address);
 
         [owner, accounts1, accounts2, accounts3, accounts4, accounts5] = await ethers.getSigners();
+
+        var treasuryAddress = await accounts5.getAddress();
+        auction = await nftAuction.deploy(voxel.address, treasuryAddress, 125);
         const amount = "100000";
         var transferResult = await voxel
             .connect(owner)

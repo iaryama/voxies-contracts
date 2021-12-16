@@ -121,7 +121,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         treasuryPercentage = _treasuryPercentage;
     }
 
-    function transferWithTreasury(
+    function transferFromWithTreasury(
         address _from,
         address _to,
         uint256 _amount
@@ -129,6 +129,12 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         uint256 treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
         voxel.safeTransferFrom(_from, treasuryAddress, treasuryFee);
         voxel.safeTransferFrom(_from, _to, _amount - treasuryFee);
+    }
+
+    function transferWithTreasury(address _to, uint256 _amount) internal {
+        uint256 treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
+        voxel.safeTransfer(treasuryAddress, treasuryFee);
+        voxel.safeTransfer(_to, _amount - treasuryFee);
     }
 
     function getCurrentPrice(uint256 _auctionId, AuctionType orderType) public view returns (uint256) {
@@ -268,7 +274,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         auctions[_auctionId].isSold = true;
 
         // transferring price to seller of nft
-        transferWithTreasury(_msgSender(), seller, currentPrice);
+        transferFromWithTreasury(_msgSender(), seller, currentPrice);
 
         //transferring nft to highest bidder
         uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
@@ -289,7 +295,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
         address seller = auctions[_auctionId].originalOwner;
 
         //sending price to seller of nft
-        transferWithTreasury(address(this), seller, auctions[_auctionId].highestBid);
+        transferWithTreasury(seller, auctions[_auctionId].highestBid);
 
         //transferring nft to highest bidder
         uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
