@@ -5,7 +5,9 @@ async function deploy() {
     const Loan = (await ethers.getContractFactory("Loan")) as Loan__factory;
     const loan = await Loan.deploy(
         [process.env.Voxel_NFT_ENGINE_ADDRESS as string],
-        process.env.VOXEL_ERC20_ADDRESS as string
+        process.env.VOXEL_ERC20_ADDRESS as string,
+        process.env.TREASURY_ADDRESS as string,
+        process.env.TREASURY_PERCENTAGE as string
     );
     console.log("Loan deployed at", loan.address);
 
@@ -25,6 +27,8 @@ async function deploy() {
             constructorArguments: [
                 [process.env.Voxel_NFT_ENGINE_ADDRESS as string],
                 process.env.VOXEL_ERC20_ADDRESS as string,
+                process.env.TREASURY_ADDRESS as string,
+                process.env.TREASURY_PERCENTAGE as string,
             ],
         });
     } catch (e: any) {

@@ -21,11 +21,11 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
 
     Counters.Counter public _loanIds;
 
-    IERC20 public token;
+    IERC20 public immutable token;
 
     address public treasury;
 
-    uint256 public contractFeePercent;
+    uint256 public treasuryPercentage;
 
     uint256 public maxLoanPeriod = 604800;
 
@@ -102,7 +102,12 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
 
     event NFTsClaimed(address owner, address[] nftAddresses, uint256[] nftIds, uint256 loanId);
 
-    constructor(address[] memory _nftAddresses, IERC20 _token) {
+    constructor(
+        address[] memory _nftAddresses,
+        IERC20 _token,
+        address _treasuryAddress,
+        uint256 _treasuryPercentage
+    ) {
         require(address(_token) != address(0), "ZERO_ADDRESS");
         _initializeEIP712("Loan", "1");
         for (uint256 i = 0; i < _nftAddresses.length; i++) {
@@ -110,6 +115,8 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
             allowedNFT[_nftAddresses[i]] = true;
         }
         token = _token;
+        treasury = _treasuryAddress;
+        treasuryPercentage = _treasuryPercentage;
     }
 
     /**
@@ -127,8 +134,8 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
      *
      * @param _percent - Contract fee percentage to be set
      */
-    function updateContractFeePercent(uint256 _percent) external onlyAdmin {
-        contractFeePercent = _percent;
+    function updatetreasuryPercentage(uint256 _percent) external onlyAdmin {
+        treasuryPercentage = _percent;
     }
 
     /**
@@ -353,8 +360,8 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
         loanItems[_loanId].startingTime = block.timestamp;
         loanItems[_loanId].claimer = offer.claimer ? NFTRewardsClaimer.loaner : NFTRewardsClaimer.loanee;
         if (loanItems[_loanId].upfrontFee != 0) {
-            if (treasury != address(0) && contractFeePercent != 0) {
-                uint256 contractFee = ((loanItems[_loanId].upfrontFee * contractFeePercent) / 100) / 100;
+            if (treasury != address(0) && treasuryPercentage != 0) {
+                uint256 contractFee = ((loanItems[_loanId].upfrontFee * treasuryPercentage) / 100) / 100;
                 token.transferFrom(offer.loanee, treasury, contractFee);
                 token.transferFrom(offer.loanee, loanItems[_loanId].owner, loanItems[_loanId].upfrontFee - contractFee);
             } else {
@@ -382,8 +389,8 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
         loanItems[_loanId].loanee = sender;
         loanItems[_loanId].startingTime = block.timestamp;
         if (loanItems[_loanId].upfrontFee != 0) {
-            if (treasury != address(0) && contractFeePercent != 0) {
-                uint256 contractFee = ((loanItems[_loanId].upfrontFee * contractFeePercent) / 100) / 100;
+            if (treasury != address(0) && treasuryPercentage != 0) {
+                uint256 contractFee = ((loanItems[_loanId].upfrontFee * treasuryPercentage) / 100) / 100;
                 token.transferFrom(sender, treasury, contractFee);
                 token.transferFrom(sender, loanItems[_loanId].owner, loanItems[_loanId].upfrontFee - contractFee);
             } else {
