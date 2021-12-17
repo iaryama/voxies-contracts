@@ -290,7 +290,7 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRe
     function claimNftFromEnglishAuction(uint256 _auctionId) external nonReentrant {
         require(auctions[_auctionId].isActive == true, "Not active auction");
         require(auctions[_auctionId].closingTime <= block.timestamp, "Auction is not closed");
-        require(auctions[_auctionId].highestBidder == _msgSender(), "You are not ower of this NFT");
+        require(auctions[_auctionId].highestBidder == _msgSender(), "You are not owner of this NFT");
 
         address seller = auctions[_auctionId].originalOwner;
 

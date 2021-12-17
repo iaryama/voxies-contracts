@@ -8,9 +8,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 import "./utils/AccessProtected.sol";
-import "./utils/BaseRelayRecipient.sol";
 
-contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected, ERC721Burnable, BaseRelayRecipient {
+contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected, ERC721Burnable {
     using Counters for Counters.Counter;
     using Address for address;
     Counters.Counter public _tokenIds;
@@ -135,13 +134,5 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected,
 
     function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
         super._burn(tokenId);
-    }
-
-    function setTrustedForwarder(address _trustedForwarder) external onlyAdmin {
-        trustedForwarder = _trustedForwarder;
-    }
-
-    function _msgSender() internal view override(Context, BaseRelayRecipient) returns (address) {
-        return BaseRelayRecipient._msgSender();
     }
 }
