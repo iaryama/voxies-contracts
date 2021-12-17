@@ -26,7 +26,7 @@ describe("NFTSale Test", async () => {
         voxelFactory: Voxel__factory;
     beforeEach(async () => {
         voxelFactory = await ethers.getContractFactory("Voxel");
-        voxel = await voxelFactory.deploy();
+        voxel = await voxelFactory.deploy(300000000, "Voxel Token", "VOXEL");
         voxelEngine = await ethers.getContractFactory("VoxiesNFTEngine");
         vox = await voxelEngine.deploy("VoxelNFT", "VOX");
         [owner, accounts1, accounts2, accounts3] = await ethers.getSigners();
@@ -310,10 +310,9 @@ describe("NFTSale Test", async () => {
                     type: "uint256",
                 },
             ];
-            const addr = await accounts2.getAddress();
-            console.log(addr);
+            const buyerAddress = await accounts2.getAddress();
             let message = {
-                buyer: addr,
+                buyer: buyerAddress,
                 price: 400,
                 listingId: 1,
             };
@@ -328,7 +327,7 @@ describe("NFTSale Test", async () => {
             };
             const signature = sigUtil.signTypedData({
                 privateKey: Buffer.from(
-                    "5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+                    "5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a", // Private key of hardhat's Address #2
                     "hex"
                 ),
                 data: dataToSign,
@@ -341,7 +340,7 @@ describe("NFTSale Test", async () => {
 
             if (![27, 28].includes(v)) v += 27;
 
-            var offerAccept = await nft.connect(accounts1).acceptOffer(addr, 400, 1, r, s, v);
+            var offerAccept = await nft.connect(accounts1).acceptOffer(buyerAddress, 400, 1, r, s, v);
         });
     });
 });

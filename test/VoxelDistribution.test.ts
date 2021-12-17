@@ -19,7 +19,7 @@ describe("Token Distribution tests", function () {
         admin = await signerAdmin.getAddress();
         alice = await signerAlice.getAddress();
         bob = await signerBob.getAddress();
-        voxel = await VoxelFactory.deploy();
+        voxel = await VoxelFactory.deploy(300000000, "Voxel Token", "VOXEL");
         voxelDistribution = await VoxelDistributionFactory.deploy(voxel.address);
         await voxel.transfer(voxelDistribution.address, ethers.utils.parseEther("1000"));
     });
