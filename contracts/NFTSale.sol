@@ -5,60 +5,86 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+import "./utils/EIP712Base.sol";
+import "./utils/BaseRelayRecipient.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-interface INFTEngine {
-    function creatorOfNft(uint256 creator) external view returns (address);
-}
-
-// NFTSale SMART CONTRACT
-contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
+contract NFTSale is Ownable, IERC721Receiver, ReentrancyGuard, EIP712Base, BaseRelayRecipient {
     using Address for address;
     using SafeERC20 for IERC20;
+    using Counters for Counters.Counter;
+    using SafeMath for uint256;
 
     IERC20 public immutable voxel;
-
-    address public immutable nftAddress;
     bool public isActive;
 
-    struct Sale {
-        uint256 nftId;
+    bytes32 private constant OFFER_TYPEHASH =
+        keccak256(bytes("Offer(address buyer,uint256 price,uint256 listingId,uint256 timestamp,uint256 expiryTime)"));
+
+    struct Listing {
+        uint256 listingId;
+        uint256 nftCount;
+        address[] nftAddresses;
+        uint256[] tokenIDs;
         uint256 price;
         address owner;
         bool isActive;
-        bool isCancelled;
+        bool isSold;
     }
 
-    // nftId => Sale mapping
-    mapping(uint256 => Sale) public _nftSales;
+    struct Offer {
+        address buyer;
+        uint256 price;
+        uint256 listingId;
+        uint256 timestamp;
+        uint256 expiryTime;
+    }
+
+    Counters.Counter public _listingIds;
+
+    mapping(address => mapping(uint256 => uint256)) private _nftToListingId; // NFT contract Address -> TokenID -> ListingId
+    mapping(address => bool) public allowedNFTAddresses;
+
     // user address => admin? mapping
     mapping(address => bool) private _admins;
+    mapping(uint256 => Listing) public listings;
+    mapping(bytes32 => bool) private cancelledOffers;
+
+    address public treasuryAddress;
+    uint256 public treasuryPercentage;
 
     event ContractStatusSet(address indexed _admin, bool indexed _isActive);
     event AdminAccessSet(address indexed _admin, bool indexed _enabled);
-    event SaleAdded(uint256 indexed _nftId, uint256 indexed _price, address indexed _owner, uint256 _timestamp);
-    event SaleCancelled(
-        uint256 indexed _nftId,
-        uint256 _price,
+    event ListingAdded(
+        uint256 indexed _listingId,
+        uint256 indexed _price,
         address indexed _owner,
-        address _cancelledBy,
+        address[] nftAddresses,
+        uint256[] nftIds,
         uint256 _timestamp
     );
+    event ListingCancelled(uint256 indexed _listingId, address indexed _owner, uint256 _timestamp);
     event Sold(
-        uint256 indexed _nftId,
+        uint256 indexed _listingId,
         address indexed _seller,
         address indexed _buyer,
         uint256 _price,
         uint256 _timestamp
     );
 
-    constructor(address _nftAddress, IERC20 _voxel) {
-        require(_nftAddress.isContract(), "_nftAddress must be a contract");
-        __Ownable_init();
-        nftAddress = _nftAddress;
+    constructor(
+        IERC20 _voxel,
+        address _treasuryAddress,
+        uint256 _treasuryPercentage
+    ) {
+        _initializeEIP712("NFTSale", "1");
         voxel = _voxel;
+        treasuryAddress = _treasuryAddress;
+        treasuryPercentage = _treasuryPercentage; // represented as a 2 decimal number i.e. 125 = 1.25%
     }
 
     /**
@@ -92,208 +118,214 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
         emit ContractStatusSet(_msgSender(), _isActive);
     }
 
-    /**
-     * Sell NFT Transfer Logic
-     *
-     * @param nftId - nftId of the NFT
-     * @param price - price to sell NFT for
-     * @param artist - artist or original owner of NFT
-     * @param nftOwner - Owner of nft on the blockchain contract
-     */
-    function _sellNFT(
-        uint256 nftId,
-        uint256 price,
-        address artist,
-        address nftOwner
-    ) private nonReentrant {
-        require(!_nftSales[nftId].isActive, "NFT Sale is active");
-        Sale memory sale = Sale(nftId, price, artist, true, false);
-        _nftSales[nftId] = sale;
-        IERC721(nftAddress).safeTransferFrom(nftOwner, address(this), nftId);
-        emit SaleAdded(nftId, price, artist, block.timestamp);
+    function setNFTContractStatus(address _nftAddress, bool _enabled) external onlyAdmin {
+        require(_nftAddress.isContract(), "Given NFT Address must be a contract");
+        allowedNFTAddresses[_nftAddress] = _enabled;
+    }
+
+    function setTreasuryAddress(address _treasuryAddress) external onlyAdmin {
+        require(!_treasuryAddress.isContract(), "Treasury Address must not be a contract");
+        treasuryAddress = _treasuryAddress;
+    }
+
+    function setTreasuryPercentage(uint256 _treasuryPercentage) external onlyAdmin {
+        require(treasuryPercentage >= 0, "treasuryPercentage has to be greater than or equal to 0");
+        treasuryPercentage = _treasuryPercentage;
+    }
+
+    function transferWithTreasury(
+        address _from,
+        address _to,
+        uint256 _amount
+    ) internal {
+        uint256 treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
+        voxel.safeTransferFrom(_from, treasuryAddress, treasuryFee);
+        voxel.safeTransferFrom(_from, _to, _amount - treasuryFee);
     }
 
     /**
-     * Put up NFT for Sale
+     * Sell NFT Bundle
      *
-     * @param nftId - nftId of the NFT
-     * @param price - price to sell NFT for
-     * @param artist - artist or original owner of NFT
-     */
-    function sellNFT(
-        uint256 nftId,
-        uint256 price,
-        address artist
-    ) external onlyAdmin {
-        address nftOwner = IERC721(nftAddress).ownerOf(nftId);
-        require(
-            IERC721(nftAddress).getApproved(nftId) == address(this) ||
-                IERC721(nftAddress).isApprovedForAll(nftOwner, address(this)),
-            "Grant NFT approval to Sale Contract"
-        );
-        _sellNFT(nftId, price, artist, nftOwner);
-    }
-
-    /**
-     * Put up My NFT for Sale
-     *
-     * @param nftId - nftId of the NFT
+     * @param _nftAddresses - Addresses of the NFTs to be bundled
+     * @param _nftIds - Token IDs of the NFTs to be bundled
      * @param price - price to sell NFT for
      */
-    function sellMyNFT(uint256 nftId, uint256 price) external {
-        address nftOwner = IERC721(nftAddress).ownerOf(nftId);
-        require(nftOwner == _msgSender(), "Seller Not Owner of NFTs");
-        _sellNFT(nftId, price, (_msgSender()), nftOwner);
-    }
-
-    /**
-     * Put up Multiple NFTs for Sale
-     *
-     * @param nftIds - nftIds of the NFTs
-     * @param prices - prices to sell NFTs for
-     * @param artist - artist or original owner of NFT
-     */
-    function sellNFTBatch(
-        uint256[] calldata nftIds,
-        uint256[] calldata prices,
-        address artist
-    ) external onlyAdmin {
-        require(nftIds.length == prices.length, "nftIds and prices length mismatch");
-        for (uint256 i = 0; i < nftIds.length; i++) {
-            uint256 nftId = nftIds[i];
-            address nftOwner = IERC721(nftAddress).ownerOf(nftId);
+    function sellNFTBundle(
+        address[] calldata _nftAddresses,
+        uint256[] calldata _nftIds,
+        uint256 price
+    ) external nonReentrant {
+        require(isActive, "Contract Status in not Active");
+        require(_nftAddresses.length == _nftIds.length, "call data not of same length");
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            require(allowedNFTAddresses[_nftAddresses[i]], "NFT contract address is not allowed");
             require(
-                IERC721(nftAddress).getApproved(nftId) == address(this) ||
-                    IERC721(nftAddress).isApprovedForAll(nftOwner, address(this)),
-                "Grant NFT approval to Sale Contract"
+                _nftToListingId[_nftAddresses[i]][_nftIds[i]] == 0,
+                "A listed Bundle exists with one of the given NFT"
             );
+            address nftOwner = IERC721(_nftAddresses[i]).ownerOf(_nftIds[i]);
+            require(_msgSender() == nftOwner, "Not owner of one or more NFTs");
         }
-        for (uint256 i = 0; i < nftIds.length; i++) {
-            uint256 nftId = nftIds[i];
-            uint256 price = prices[i];
-            address nftOwner = IERC721(nftAddress).ownerOf(nftId);
-            _sellNFT(nftId, price, artist, nftOwner);
+        _listingIds.increment();
+        uint256 listingId = _listingIds.current();
+
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToListingId[_nftAddresses[i]][_nftIds[i]] = listingId;
+            IERC721(_nftAddresses[i]).transferFrom(_msgSender(), address(this), _nftIds[i]);
         }
+        Listing memory listing = Listing(
+            listingId,
+            _nftAddresses.length,
+            _nftAddresses,
+            _nftIds,
+            price,
+            _msgSender(),
+            true,
+            false
+        );
+        listings[listingId] = listing;
+        emit ListingAdded(listingId, price, _msgSender(), _nftAddresses, _nftIds, block.timestamp);
     }
 
     /**
-     * Put up Multiple NFTs of mine for Sale
+     * Get NFT Sale Listing
      *
-     * @param nftIds - nftIds of the NFTs
-     * @param prices - prices to sell NFTs for
+     * @param _listingId - id of the NFT Bundle
      */
-    function sellMyNFTBatch(uint256[] calldata nftIds, uint256[] calldata prices) external {
-        require(nftIds.length == prices.length, "nftIds and prices length mismatch");
-        for (uint256 i = 0; i < nftIds.length; i++) {
-            uint256 nftId = nftIds[i];
-            require(IERC721(nftAddress).ownerOf(nftId) == _msgSender(), "Seller Not Owner of NFTs");
-        }
-        for (uint256 i = 0; i < nftIds.length; i++) {
-            uint256 nftId = nftIds[i];
-            uint256 price = prices[i];
-            address nftOwner = IERC721(nftAddress).ownerOf(nftId);
-            _sellNFT(nftId, price, (_msgSender()), nftOwner);
-        }
-    }
-
-    /**
-     * Get NFT Sale
-     *
-     * @param nftId - id of the NFT
-     */
-    function getSale(uint256 nftId) external view returns (address, uint256) {
-        require(_nftSales[nftId].isActive, "NFT is not up for sale");
-        return (_nftSales[nftId].owner, _nftSales[nftId].price);
+    function getListing(uint256 _listingId) external view returns (address[] memory, uint256[] memory) {
+        return (listings[_listingId].nftAddresses, listings[_listingId].tokenIDs);
     }
 
     /**
      * Cancel NFT Sale
      *
-     * @param nftId - id of the NFT
+     * @param _listingId - id of the NFT Bundle
      */
-    function cancelSale(uint256 nftId) external onlyAdmin nonReentrant {
-        require(_nftSales[nftId].isActive, "NFT is not up for sale");
-        _nftSales[nftId].isActive = false;
-        _nftSales[nftId].isCancelled = true;
-        IERC721(nftAddress).safeTransferFrom(address(this), _nftSales[nftId].owner, nftId);
-        emit SaleCancelled(nftId, _nftSales[nftId].price, _nftSales[nftId].owner, _msgSender(), block.timestamp);
+    function cancelListingBundle(uint256 _listingId) external nonReentrant {
+        require(isActive, "Contract Status in not Active");
+        require(listings[_listingId].isActive, "Listing is already inactive");
+        require(listings[_listingId].owner == _msgSender(), "You are not the owner of this listing");
+        listings[_listingId].isActive = false;
+        uint256[] memory _nftIds = listings[_listingId].tokenIDs;
+        address[] memory _nftAddresses = listings[_listingId].nftAddresses;
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToListingId[_nftAddresses[i]][_nftIds[i]] = 0;
+            IERC721(_nftAddresses[i]).transferFrom(address(this), listings[_listingId].owner, _nftIds[i]);
+        }
+        emit ListingCancelled(_listingId, _msgSender(), block.timestamp);
     }
 
     /**
      * Purchase NFT Internal
      *
-     * @param nftId - nftId of the NFT
+     * @param _listingId - id of the NFT Bundle
      */
-    function _purchaseNFT(uint256 nftId) private {
-        require(_nftSales[nftId].isActive, "NFT is not for sale");
-        address seller = _nftSales[nftId].owner;
+    function purchaseNFT(uint256 _listingId, uint256 _amount) external nonReentrant {
+        require(isActive, "Sale Contract Status in not Active");
+        require(_amount == listings[_listingId].price, "value not equal to price of nft");
+        require(!listings[_listingId].isSold, "Listing is already sold");
+        require(listings[_listingId].isActive, "Listing is inactive");
+        address seller = listings[_listingId].owner;
         address buyer = (_msgSender());
-        uint256 price = _nftSales[nftId].price;
+        uint256 price = listings[_listingId].price;
+        listings[_listingId].isSold = true;
+        listings[_listingId].isActive = false;
+        uint256[] memory _nftIds = listings[_listingId].tokenIDs;
+        address[] memory _nftAddresses = listings[_listingId].nftAddresses;
 
-        _nftSales[nftId].owner = buyer;
-        _nftSales[nftId].isActive = false;
+        // Transfer the Voxel Tokens
+        transferWithTreasury(buyer, seller, price);
 
-        //transfer price of nft to seller
-        voxel.safeTransfer(seller, price);
-
-        IERC721(nftAddress).safeTransferFrom(address(this), buyer, nftId);
-
-        emit Sold(nftId, seller, buyer, price, block.timestamp);
-    }
-
-    /**
-     * Purchase NFT
-     *
-     * @param nftId - nftId of the NFT
-     */
-    function purchaseNFT(uint256 nftId, uint256 _amount) external nonReentrant {
-        require(isActive, "Contract Status in not Active");
-        require(_amount == _nftSales[nftId].price, "value not equal to price of nft");
-
-        voxel.safeTransferFrom(_msgSender(), address(this), _amount);
-        _purchaseNFT(nftId);
-    }
-
-    /**
-     * Batch Purchase NFT
-     *
-     * @param nftIds - nftIds of the NFT
-     */
-    function purchaseNFTBatch(uint256[] calldata nftIds, uint256 _amount) external nonReentrant {
-        require(isActive, "Contract Status in not Active");
-        uint256 totalPrice;
-        for (uint256 i = 0; i < nftIds.length; i++) {
-            uint256 nftId = nftIds[i];
-            require(_nftSales[nftId].isActive, "One or more nfts requested in the batch purchase is not active");
-            totalPrice = totalPrice + _nftSales[nftId].price;
+        // Transfer the NFTs to the buyer
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToListingId[_nftAddresses[i]][_nftIds[i]] = 0;
+            IERC721(_nftAddresses[i]).transferFrom(address(this), buyer, _nftIds[i]);
         }
-        require(_amount == totalPrice, "value not equal to price of nfts");
-        voxel.safeTransferFrom(_msgSender(), address(this), _amount);
-
-        for (uint256 i = 0; i < nftIds.length; i++) {
-            uint256 nftId = nftIds[i];
-            _purchaseNFT(nftId);
-        }
+        emit Sold(_listingId, seller, buyer, price, block.timestamp);
     }
 
-    // @TODO Batch Purchase
+    function hashOffer(Offer memory offer) internal pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(OFFER_TYPEHASH, offer.buyer, offer.price, offer.listingId, offer.timestamp, offer.expiryTime)
+            );
+    }
 
-    /**
-     * Release NFT
-     *
-     * @param nftId - id of the NFT
-     * @param buyer - buyer of the NFT
-     */
-    function releaseNFT(uint256 nftId, address buyer) external onlyAdmin nonReentrant {
-        require(_nftSales[nftId].isActive, "NFT is not for sale");
-        address seller = _nftSales[nftId].owner;
+    function verify(
+        address signer,
+        Offer memory offer,
+        bytes32 sigR,
+        bytes32 sigS,
+        uint8 sigV
+    ) internal view returns (bool) {
+        require(signer != address(0), "NativeMetaTransaction: INVALID_SIGNER");
+        return signer == ecrecover(toTypedMessageHash(hashOffer(offer)), sigV, sigR, sigS);
+    }
 
-        _nftSales[nftId].owner = buyer;
-        _nftSales[nftId].isActive = false;
+    function acceptOffer(
+        address offerSender,
+        uint256 amount,
+        uint256 listingId,
+        uint256 timestamp,
+        uint256 expiryTime,
+        bytes32 sigR,
+        bytes32 sigS,
+        uint8 sigV
+    ) external {
+        Offer memory offer = Offer({
+            buyer: offerSender,
+            price: amount,
+            listingId: listingId,
+            timestamp: timestamp,
+            expiryTime: expiryTime
+        });
+        require(verify(offerSender, offer, sigR, sigS, sigV), "Signature data and Offer data do not match");
+        require(!cancelledOffers[hashOffer(offer)], "This offer has been cancelled");
+        require(block.timestamp <= expiryTime, "Offer has expired");
+        require(isActive, "Sale Contract Status in not Active");
+        require(!listings[listingId].isSold, "Listing is already sold");
+        require(listings[listingId].isActive, "Listing is inactive");
+        address seller = listings[listingId].owner;
+        require(_msgSender() == seller, "Offer can only be accepted by the listing owner");
+        listings[listingId].isSold = true;
+        listings[listingId].isActive = false;
+        uint256[] memory _nftIds = listings[listingId].tokenIDs;
+        address[] memory _nftAddresses = listings[listingId].nftAddresses;
 
-        IERC721(nftAddress).safeTransferFrom(address(this), buyer, nftId);
+        // Transfer the Voxel Tokens
+        transferWithTreasury(offerSender, seller, amount);
 
-        emit Sold(nftId, seller, buyer, 0, block.timestamp);
+        // Transfer the NFTs to the buyer
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToListingId[_nftAddresses[i]][_nftIds[i]] = 0;
+            IERC721(_nftAddresses[i]).transferFrom(address(this), offerSender, _nftIds[i]);
+        }
+        emit Sold(listingId, seller, offerSender, amount, block.timestamp);
+    }
+
+    function cancelOffer(
+        address offerSender,
+        uint256 amount,
+        uint256 listingId,
+        uint256 timestamp,
+        uint256 expiryTime,
+        bytes32 sigR,
+        bytes32 sigS,
+        uint8 sigV
+    ) external {
+        Offer memory offer = Offer({
+            buyer: offerSender,
+            price: amount,
+            listingId: listingId,
+            timestamp: timestamp,
+            expiryTime: expiryTime
+        });
+        require(verify(offerSender, offer, sigR, sigS, sigV), "Signature data and Offer data do not match");
+        require(offerSender == _msgSender(), "Only offer owner can cancel it");
+        bytes32 offerHash = hashOffer((offer));
+        if (!cancelledOffers[offerHash]) {
+            cancelledOffers[offerHash] = true;
+        }
     }
 
     function onERC721Received(
@@ -311,5 +343,13 @@ contract NFTSale is OwnableUpgradeable, IERC721Receiver, ReentrancyGuard {
     modifier onlyAdmin() {
         require(_admins[_msgSender()] || _msgSender() == owner(), "Caller does not have Admin Access");
         _;
+    }
+
+    function setTrustedForwarder(address _trustedForwarder) external onlyAdmin {
+        trustedForwarder = _trustedForwarder;
+    }
+
+    function _msgSender() internal view override(Context, BaseRelayRecipient) returns (address) {
+        return BaseRelayRecipient._msgSender();
     }
 }

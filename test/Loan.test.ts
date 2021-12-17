@@ -4,8 +4,6 @@ const sigUtil = require("@metamask/eth-sig-util");
 import {
     Voxel,
     Voxel__factory,
-    NFT,
-    NFT__factory,
     Loan,
     Loan__factory,
     VoxiesNFTEngine__factory,
@@ -36,7 +34,7 @@ describe("Loaning Tests", async () => {
         voxelEngine = (await ethers.getContractFactory("VoxiesNFTEngine")) as VoxiesNFTEngine__factory;
         vox = await voxelEngine.deploy("VoxelNFT", "VOX");
         voxelFactory = (await ethers.getContractFactory("Voxel")) as Voxel__factory;
-        voxel = await voxelFactory.deploy();
+        voxel = await voxelFactory.deploy(300000000, "Voxel Token", "VOXEL");
         loanFactory = (await ethers.getContractFactory("Loan")) as Loan__factory;
         loan = await loanFactory.deploy([], voxel.address, await accounts5.getAddress(), 100);
         accounts6 = new ethers.Wallet(
@@ -381,7 +379,7 @@ describe("Loaning Tests", async () => {
                 }
             });
             it("should be able to withdraw erc20 other than voxel", async () => {
-                const voxel1 = await voxelFactory.deploy();
+                const voxel1 = await voxelFactory.deploy(300000000, "Voxel Token", "VOXEL");
                 await voxel1.connect(owner).transfer(loan.address, 100);
                 const balance = await (await voxel1.balanceOf(ownerAddress)).toBigInt();
                 await loan.connect(owner).withdrawERC20(voxel1.address);

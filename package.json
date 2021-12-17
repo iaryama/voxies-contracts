@@ -44,12 +44,13 @@
         "ts-node": "^10.2.1",
         "typechain": "^5.1.2",
         "typescript": "^4.4.3",
-        "web3": "^1.6.0"
+        "web3": "^1.6.1"
     },
     "lint-staged": {
         "*.{ts,json,sol,md}": "prettier --write"
     },
     "dependencies": {
+        "@metamask/eth-sig-util": "^4.0.0",
         "@openzeppelin/contracts": "^4.3.2",
         "@openzeppelin/contracts-upgradeable": "^4.3.2",
         "dotenv": "^10.0.0"

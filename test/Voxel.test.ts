@@ -11,7 +11,7 @@ describe("Voxel token tests", () => {
         voxelFactory = await ethers.getContractFactory("Voxel");
     });
     beforeEach(async () => {
-        voxel = await voxelFactory.deploy();
+        voxel = await voxelFactory.deploy(300000000, "Voxel Token", "VOXEL");
         [adminSigner, aliceSigner, bobSigner] = await ethers.getSigners();
         admin = await adminSigner.getAddress();
         alice = await aliceSigner.getAddress();
@@ -21,10 +21,10 @@ describe("Voxel token tests", () => {
         expect(await voxel.name()).eq("Voxel Token");
     });
     it("sets correct token symbol", async () => {
-        expect(await voxel.symbol()).eq("VXL");
+        expect(await voxel.symbol()).eq("VOXEL");
     });
     it("mints on deployment", async () => {
-        expect(await voxel.balanceOf(admin)).eq(ethers.utils.parseEther("1000000"));
+        expect(await voxel.balanceOf(admin)).eq(ethers.utils.parseEther("300000000"));
     });
     it("transfers to other address", async () => {
         await expect(voxel.transfer(alice, 1000)).to.emit(voxel, "Transfer").withArgs(admin, alice, 1000);

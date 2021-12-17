@@ -6,7 +6,8 @@ async function deploy() {
     const NFTAuction = await ethers.getContractFactory("NftAuction");
     const nftAuction = await NFTAuction.deploy(
         process.env.VOXEL_ERC20_ADDRESS as string,
-        process.env.Voxel_NFT_ENGINE_ADDRESS as string
+        "0xb1FAa64af8Ad9E139F0D265c5e4731bC6c9C9C7D",
+        100
     );
     console.log("NFTAuction contract deployed at:", nftAuction.address);
 }

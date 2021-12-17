@@ -1,10 +1,16 @@
-//SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.0;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.4;
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-
+import { IERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+import "./utils/AccessProtected.sol";
+import "./utils/BaseRelayRecipient.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 interface IVoxelNFT {
     function issueToken(
@@ -28,8 +34,13 @@ interface IVoxelNFT {
     ) external;
 }
 
-contract NftAuction is IERC721Receiver, ReentrancyGuard {
+contract NftAuction is IERC721Receiver, ReentrancyGuard, AccessProtected, BaseRelayRecipient {
+    using Address for address;
+    using Counters for Counters.Counter;
+    using SafeMath for uint256;
+
     struct Auction {
+        uint256 auctionID;
         AuctionType orderType;
         uint256 highestBid;
         uint256 startBid;
@@ -40,7 +51,15 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         address originalOwner;
         bool isActive;
         bool isSold;
+        uint256 nftCount;
+        address[] nftAddresses;
+        uint256[] tokenIDs; // Corresponding tokenIDs to above NFT addresses.
     }
+
+    mapping(address => mapping(uint256 => uint256)) private _nftToAuctionId; // NFT contract Address -> TokenID -> AuctionID
+    mapping(address => bool) public allowedNFTAddresses; // Whitelisted NFT contract addresses
+
+    Counters.Counter public _auctionIds;
 
     enum AuctionType {
         dutchAuction,
@@ -50,178 +69,273 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
     //AuctionType orderType;
 
     mapping(uint256 => Auction) public auctions;
+    mapping(address => mapping(uint256 => uint256)) public claimableFunds; // User address -> AuctionID -> amount claimable
 
     IERC20 public immutable voxel;
-    IVoxelNFT public immutable nft_;
     using SafeERC20 for IERC20;
     uint256 public balances;
 
+    address public treasuryAddress;
+    uint256 public treasuryPercentage;
+
     event NewAuctionOpened(
+        uint256 indexed auctionId,
         AuctionType indexed orderType,
-        uint256 indexed nftId,
+        address[] nftAddresses,
+        uint256[] nftIds,
         uint256 startingBid,
         uint256 closingTime,
-        address indexed originalOwner
+        address originalOwner
     );
 
-    event EnglishAuctionClosed(uint256 indexed nftId, uint256 highestBid, address indexed highestBidder);
+    event EnglishAuctionClosed(uint256 indexed auctionId, uint256 highestBid, address indexed highestBidder);
 
-    event BidPlacedInEnglishAuction(uint256 indexed nftId, uint256 indexed bidPrice, address indexed bidder);
+    event BidPlacedInEnglishAuction(uint256 indexed auctionId, uint256 indexed bidPrice, address indexed bidder);
 
-    event BoughtNFTInDutchAuction(uint256 indexed nftId, uint256 indexed bidPrice, address indexed buyer);
+    event BoughtNFTInDutchAuction(uint256 indexed auctionId, uint256 indexed bidPrice, address indexed buyer);
 
-    event AuctionCancelled(uint256 indexed nftId, address indexed cancelledBy);
+    event AuctionCancelled(uint256 indexed auctionId, address indexed cancelledBy);
 
-    constructor(IERC20 _voxel, IVoxelNFT _nft) {
-        nft_ = _nft;
+    constructor(
+        IERC20 _voxel,
+        address _treasuryAddress,
+        uint256 _treasuryPercentage
+    ) {
         voxel = _voxel;
+        treasuryAddress = _treasuryAddress;
+        treasuryPercentage = _treasuryPercentage; // represented as a 2 decimal number i.e. 125 = 1.25%
     }
 
-    function getCurrentPrice(uint256 _nftId, AuctionType orderType) public view returns (uint256) {
+    function setNFTContractStatus(address _nftAddress, bool _enabled) external onlyAdmin {
+        require(_nftAddress.isContract(), "Given NFT Address must be a contract");
+        allowedNFTAddresses[_nftAddress] = _enabled;
+    }
+
+    function setTreasuryAddress(address _treasuryAddress) external onlyAdmin {
+        require(!_treasuryAddress.isContract(), "Treasury Address must not be a contract");
+        treasuryAddress = _treasuryAddress;
+    }
+
+    function setTreasuryPercentage(uint256 _treasuryPercentage) external onlyAdmin {
+        require(treasuryPercentage >= 0, "treasuryPercentage has to be greater than or equal to 0");
+        treasuryPercentage = _treasuryPercentage;
+    }
+
+    function transferFromWithTreasury(
+        address _from,
+        address _to,
+        uint256 _amount
+    ) internal {
+        uint256 treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
+        voxel.safeTransferFrom(_from, treasuryAddress, treasuryFee);
+        voxel.safeTransferFrom(_from, _to, _amount - treasuryFee);
+    }
+
+    function transferWithTreasury(address _to, uint256 _amount) internal {
+        uint256 treasuryFee = _amount.mul(treasuryPercentage).div(100).div(100);
+        voxel.safeTransfer(treasuryAddress, treasuryFee);
+        voxel.safeTransfer(_to, _amount - treasuryFee);
+    }
+
+    function getCurrentPrice(uint256 _auctionId, AuctionType orderType) public view returns (uint256) {
         AuctionType choicee = AuctionType.englishAuction;
 
         if (choicee == orderType) {
-            return auctions[_nftId].highestBid;
-        }
-         else {
-            uint256 hoursPassed =  (block.timestamp - auctions[_nftId].startingTime)/3600;
-            uint256 _startPrice = auctions[_nftId].startBid;
-            uint256 _endPrice = auctions[_nftId].endBid;
-            uint256 _startingTime = auctions[_nftId].startingTime;
-            uint256 tickPerBlock = (_startPrice - _endPrice) / (auctions[_nftId].closingTime - _startingTime);
-            uint256 tickPerHour = (tickPerBlock *3600) ;
-            return _startPrice - ((hoursPassed) * tickPerHour);
-
+            return auctions[_auctionId].highestBid;
+        } else {
+            uint256 _startPrice = auctions[_auctionId].startBid;
+            uint256 _endPrice = auctions[_auctionId].endBid;
+            uint256 _startingTime = auctions[_auctionId].startingTime;
+            uint256 tickPerBlock = (_startPrice - _endPrice) / (auctions[_auctionId].closingTime - _startingTime);
+            return _startPrice - ((block.timestamp - _startingTime) * tickPerBlock);
         }
     }
 
     function startDutchAuction(
-        uint256 _nftId,
+        address[] calldata _nftAddresses,
+        uint256[] calldata _nftIds,
         uint256 _startPrice,
         uint256 _endBid,
         uint256 _duration
-    ) external {
+    ) external returns (uint256) {
         require(_startPrice > _endBid, "End price should be lower than start price");
         choice = AuctionType.dutchAuction;
-        openAuction(choice, _nftId, _startPrice, _endBid, _duration);
+        return openAuction(choice, _nftAddresses, _nftIds, _startPrice, _endBid, _duration);
     }
 
     function startEnglishAuction(
-        uint256 _nftId,
+        address[] calldata _nftAddresses,
+        uint256[] calldata _nftIds,
         uint256 _startPrice,
         uint256 _duration
-    ) external {
+    ) external returns (uint256) {
         choice = AuctionType.englishAuction;
-        openAuction(choice, _nftId, _startPrice, 0, _duration);
+        return openAuction(choice, _nftAddresses, _nftIds, _startPrice, 0, _duration);
     }
 
     function openAuction(
         AuctionType _orderType,
-        uint256 _nftId,
+        address[] calldata _nftAddresses,
+        uint256[] calldata _nftIds,
         uint256 _initialBid,
         uint256 _endBid,
         uint256 _duration
-    ) private nonReentrant {
-        require(auctions[_nftId].isActive == false, "Ongoing auction detected");
+    ) private nonReentrant returns (uint256) {
+        require(_nftAddresses.length == _nftIds.length, "call data not of same length");
+        require(_nftIds.length > 0, "Atleast one NFT should be specified");
         require(_duration > 0 && _initialBid > 0, "Invalid input");
-        require(nft_.ownerOf(_nftId) == msg.sender, "Not NFT owner");
-        auctions[_nftId].orderType = _orderType;
-        auctions[_nftId].startBid = _initialBid;
-        auctions[_nftId].endBid = _endBid;
-        auctions[_nftId].startingTime = block.timestamp;
-        auctions[_nftId].closingTime = block.timestamp + _duration;
-        auctions[_nftId].highestBid = _initialBid;
-        auctions[_nftId].highestBidder = msg.sender;
-        auctions[_nftId].originalOwner = msg.sender;
-        auctions[_nftId].isActive = true;
-        nft_.safeTransferFrom(msg.sender, address(this), _nftId);
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            require(allowedNFTAddresses[_nftAddresses[i]], "NFT contract address is not allowed");
+            require(
+                _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] == 0,
+                "An auction Bundle exists with one of the given NFT"
+            );
+            address nftOwner = IERC721(_nftAddresses[i]).ownerOf(_nftIds[i]);
+            require(_msgSender() == nftOwner, "Not owner of one or more NFTs");
+        }
+
+        _auctionIds.increment();
+        uint256 newAuctionId = _auctionIds.current();
+        auctions[newAuctionId].auctionID = newAuctionId;
+        auctions[newAuctionId].orderType = _orderType;
+        auctions[newAuctionId].startBid = _initialBid;
+        auctions[newAuctionId].endBid = _endBid;
+        auctions[newAuctionId].startingTime = block.timestamp;
+        auctions[newAuctionId].closingTime = block.timestamp + _duration;
+        auctions[newAuctionId].highestBid = _initialBid;
+        auctions[newAuctionId].highestBidder = _msgSender();
+        auctions[newAuctionId].originalOwner = _msgSender();
+        auctions[newAuctionId].isActive = true;
+        auctions[newAuctionId].nftCount = _nftIds.length;
+        auctions[newAuctionId].nftAddresses = _nftAddresses;
+        auctions[newAuctionId].tokenIDs = _nftIds;
+
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] = newAuctionId;
+            IERC721(_nftAddresses[i]).transferFrom(_msgSender(), address(this), _nftIds[i]);
+        }
+
         emit NewAuctionOpened(
+            newAuctionId,
             _orderType,
-            _nftId,
-            auctions[_nftId].startBid,
-            auctions[_nftId].closingTime,
-            auctions[_nftId].originalOwner
+            _nftAddresses,
+            _nftIds,
+            auctions[newAuctionId].startBid,
+            auctions[newAuctionId].closingTime,
+            auctions[newAuctionId].originalOwner
         );
+        return newAuctionId;
     }
 
     function placeBidInEnglishAuction(
-        uint256 _nftId,
+        uint256 _auctionId,
         uint256 _amount,
         AuctionType orderType
     ) external nonReentrant {
         choice = AuctionType.englishAuction;
-        require(auctions[_nftId].isActive == true, "Not active auction");
-        require(auctions[_nftId].closingTime > block.timestamp, "Auction is closed");
-        require(_amount > auctions[_nftId].highestBid, "Bid is too low");
+        require(auctions[_auctionId].isActive == true, "Not active auction");
+        require(auctions[_auctionId].closingTime > block.timestamp, "Auction is closed");
+        require(_amount > auctions[_auctionId].highestBid, "Bid is too low");
         require(orderType == choice, "only for English Auction");
-        if (auctions[_nftId].closingTime - block.timestamp <= 600) {
-            auctions[_nftId].closingTime += 60;
+        if (auctions[_auctionId].closingTime - block.timestamp <= 600) {
+            auctions[_auctionId].closingTime += 60;
         }
-        
-        voxel.safeTransferFrom(msg.sender, address(this), _amount);
-        //transferring bid amount to previous highest bidder
-        if (auctions[_nftId].originalOwner != auctions[_nftId].highestBidder) {
-            voxel.safeTransfer(auctions[_nftId].highestBidder, auctions[_nftId].highestBid);
-        }
-        auctions[_nftId].highestBid = _amount;
-        auctions[_nftId].highestBidder = msg.sender;
-        emit BidPlacedInEnglishAuction(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
+        // Lock Additional funds only if the user has made a bid before on the same auction
+        uint256 lockedFunds = claimableFunds[_msgSender()][_auctionId];
+        uint256 toLock = _amount.sub(lockedFunds);
+        voxel.safeTransferFrom(_msgSender(), address(this), toLock);
+        claimableFunds[_msgSender()][_auctionId] = 0;
+
+        // Make previous highest bidder's funds claimable
+        claimableFunds[auctions[_auctionId].highestBidder][_auctionId] = auctions[_auctionId].highestBid;
+
+        // Make current bidder the highest bidder
+        auctions[_auctionId].highestBid = _amount;
+        auctions[_auctionId].highestBidder = _msgSender();
+        emit BidPlacedInEnglishAuction(_auctionId, auctions[_auctionId].highestBid, auctions[_auctionId].highestBidder);
     }
 
     function buyNftFromDutchAuction(
-        uint256 _nftId,
+        uint256 _auctionId,
         uint256 _amount,
         AuctionType orderType
     ) external nonReentrant {
         choice = AuctionType.dutchAuction;
-        require(auctions[_nftId].isActive == true, "Not active auction");
-        require(auctions[_nftId].closingTime > block.timestamp, "Auction is closed");
+        require(auctions[_auctionId].isActive == true, "Not active auction");
+        require(auctions[_auctionId].closingTime > block.timestamp, "Auction is closed");
         require(orderType == choice, "only for Dutch Auction");
-        require(auctions[_nftId].isSold == false, "Already sold");
-        uint256 currentPrice = getCurrentPrice(_nftId, choice);
+        require(auctions[_auctionId].isSold == false, "Already sold");
+        uint256 currentPrice = getCurrentPrice(_auctionId, choice);
         require(_amount >= currentPrice, "price error");
-        address seller = auctions[_nftId].originalOwner;
+        address seller = auctions[_auctionId].originalOwner;
 
-        auctions[_nftId].highestBid = _amount;
-        auctions[_nftId].highestBidder = msg.sender;
-        auctions[_nftId].isSold = true;
+        auctions[_auctionId].highestBid = _amount;
+        auctions[_auctionId].highestBidder = _msgSender();
+        auctions[_auctionId].isSold = true;
 
         // transferring price to seller of nft
-        voxel.safeTransferFrom(msg.sender,seller, currentPrice);
-        //voxel.safeTransferFrom(msg.sender, address(this), _amount);
+        transferFromWithTreasury(_msgSender(), seller, currentPrice);
 
         //transferring nft to highest bidder
-        nft_.safeTransferFrom(address(this), msg.sender, _nftId);
+        uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
+        address[] memory _nftAddresses = auctions[_auctionId].nftAddresses;
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] = 0;
+            IERC721(_nftAddresses[i]).transferFrom(address(this), _msgSender(), _nftIds[i]);
+        }
 
-        emit BoughtNFTInDutchAuction(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
+        emit BoughtNFTInDutchAuction(_auctionId, auctions[_auctionId].highestBid, auctions[_auctionId].highestBidder);
     }
 
-    function claimNftFromEnglishAuction(uint256 _nftId) external nonReentrant {
-        require(auctions[_nftId].isActive == true, "Not active auction");
-        require(auctions[_nftId].closingTime <= block.timestamp, "Auction is not closed");
-        require(auctions[_nftId].highestBidder == msg.sender, "You are not ower of this NFT");
+    function claimNftFromEnglishAuction(uint256 _auctionId) external nonReentrant {
+        require(auctions[_auctionId].isActive == true, "Not active auction");
+        require(auctions[_auctionId].closingTime <= block.timestamp, "Auction is not closed");
+        require(auctions[_auctionId].highestBidder == _msgSender(), "You are not owner of this NFT");
 
-        address seller = auctions[_nftId].originalOwner;
-    
+        address seller = auctions[_auctionId].originalOwner;
+
         //sending price to seller of nft
-        voxel.safeTransfer(seller, auctions[_nftId].highestBid);
-        
-        //transferring nft to highest bidder
-        nft_.safeTransferFrom(address(this), auctions[_nftId].highestBidder, _nftId);
-        auctions[_nftId].isActive = false;
+        transferWithTreasury(seller, auctions[_auctionId].highestBid);
 
-        emit EnglishAuctionClosed(_nftId, auctions[_nftId].highestBid, auctions[_nftId].highestBidder);
+        //transferring nft to highest bidder
+        uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
+        address[] memory _nftAddresses = auctions[_auctionId].nftAddresses;
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] = 0;
+            IERC721(_nftAddresses[i]).transferFrom(address(this), auctions[_auctionId].highestBidder, _nftIds[i]);
+        }
+
+        auctions[_auctionId].isActive = false;
+        emit EnglishAuctionClosed(_auctionId, auctions[_auctionId].highestBid, auctions[_auctionId].highestBidder);
     }
 
-    function cancelAuction(uint256 _nftId) external nonReentrant {
-        require(auctions[_nftId].isActive == true, "Not active auction");
-        require(auctions[_nftId].closingTime > block.timestamp, "Auction is closed, Go to Claim Nft");
-        require(auctions[_nftId].startBid == auctions[_nftId].highestBid, "Bids were placed in the Auction");
-        require(auctions[_nftId].originalOwner == msg.sender, "You are not the creator of Auction");
-        auctions[_nftId].isActive = false;
-        delete auctions[_nftId];
+    function claimFundsFromEnglishAuction(uint256 _auctionId) external nonReentrant {
+        address sender = _msgSender();
+        uint256 claimable = claimableFunds[sender][_auctionId];
+        require(claimable > 0, "No funds to claim for this auction ID");
+        voxel.safeTransferFrom(address(this), sender, claimable);
+        claimableFunds[sender][_auctionId] = 0;
+    }
 
-        emit AuctionCancelled(_nftId, msg.sender);
+    function cancelAuction(uint256 _auctionId) external nonReentrant {
+        require(auctions[_auctionId].isActive == true, "Not active auction");
+        require(auctions[_auctionId].closingTime > block.timestamp, "Auction is closed, Go to Claim Nft");
+        require(auctions[_auctionId].startBid == auctions[_auctionId].highestBid, "Bids were placed in the Auction");
+        require(auctions[_auctionId].originalOwner == _msgSender(), "You are not the creator of Auction");
+        auctions[_auctionId].isActive = false;
+
+        uint256[] memory _nftIds = auctions[_auctionId].tokenIDs;
+        address[] memory _nftAddresses = auctions[_auctionId].nftAddresses;
+        for (uint256 i = 0; i < _nftIds.length; i++) {
+            _nftToAuctionId[_nftAddresses[i]][_nftIds[i]] = 0;
+            IERC721(_nftAddresses[i]).transferFrom(address(this), auctions[_auctionId].originalOwner, _nftIds[i]);
+        }
+
+        emit AuctionCancelled(_auctionId, _msgSender());
+    }
+
+    function getBundledNFTs(uint256 _auctionId) public view returns (address[] memory, uint256[] memory) {
+        return (auctions[_auctionId].nftAddresses, auctions[_auctionId].tokenIDs);
     }
 
     function onERC721Received(
@@ -231,5 +345,13 @@ contract NftAuction is IERC721Receiver, ReentrancyGuard {
         bytes calldata data
     ) external override returns (bytes4) {
         return this.onERC721Received.selector;
+    }
+
+    function setTrustedForwarder(address _trustedForwarder) external onlyAdmin {
+        trustedForwarder = _trustedForwarder;
+    }
+
+    function _msgSender() internal view override(Context, BaseRelayRecipient) returns (address) {
+        return BaseRelayRecipient._msgSender();
     }
 }

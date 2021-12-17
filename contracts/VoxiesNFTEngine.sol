@@ -6,9 +6,10 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 import "./utils/AccessProtected.sol";
 
-contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected {
+contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected, ERC721Burnable {
     using Counters for Counters.Counter;
     using Address for address;
     Counters.Counter public _tokenIds;
@@ -61,16 +62,6 @@ contract VoxiesNFTEngine is ERC721URIStorage, ERC721Enumerable, AccessProtected 
             result[index] = tokenOfOwnerByIndex(holder, index);
         }
         return result;
-    }
-
-    /**
-     * Burn NFT
-     *
-     * @param tokenId - NFT Id to Burn
-     */
-    function burn(uint256 tokenId) external {
-        require(ownerOf(tokenId) == msg.sender, "Caller Not the Owner Of NFT");
-        _burn(tokenId);
     }
 
     function _beforeTokenTransfer(
