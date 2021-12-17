@@ -32,13 +32,13 @@ describe("Loaning Tests", async () => {
         nullAddress: string;
 
     before(async () => {
+        [owner, accounts1, accounts2, accounts3, accounts4, accounts5] = await ethers.getSigners();
         voxelEngine = (await ethers.getContractFactory("VoxiesNFTEngine")) as VoxiesNFTEngine__factory;
         vox = await voxelEngine.deploy("VoxelNFT", "VOX");
         voxelFactory = (await ethers.getContractFactory("Voxel")) as Voxel__factory;
         voxel = await voxelFactory.deploy();
         loanFactory = (await ethers.getContractFactory("Loan")) as Loan__factory;
-        loan = await loanFactory.deploy([], voxel.address);
-        [owner, accounts1, accounts2, accounts3, accounts4, accounts5] = await ethers.getSigners();
+        loan = await loanFactory.deploy([], voxel.address, await accounts5.getAddress(), 100);
         accounts6 = new ethers.Wallet(
             "c0bbcfa11e989db401daadb9a01ee46e7d337a740388f4ef41ed0ab8a18a1ff9",
             ethers.provider
@@ -402,7 +402,7 @@ describe("Loaning Tests", async () => {
                 );
                 const totalRewards = await (await loan.loanItems(loanId)).totalRewards;
                 expect(totalRewards.toNumber()).to.be.equal(110);
-                expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1014);
+                expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1004);
                 expect((await voxel.balanceOf(account2Address)).toNumber()).to.be.equal(0);
             });
             it("loaner cannot claim nft rewards during active loan period", async () => {
@@ -420,13 +420,13 @@ describe("Loaning Tests", async () => {
                 );
                 const totalRewards = await (await loan.loanItems(loanId)).totalRewards;
                 expect(totalRewards.toNumber()).to.be.equal(120);
-                expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1014);
+                expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1004);
                 expect((await voxel.balanceOf(account2Address)).toNumber()).to.be.equal(105);
                 await expect(loan.connect(accounts1).claimERC20Rewards(loanId)).to.emit(
                     loan,
                     "ERC20RewardsClaimed"
                 );
-                expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1015);
+                expect((await voxel.balanceOf(account1Address)).toNumber()).to.be.equal(1005);
             });
             it("Testing pending rewards and contract balances", async () => {
                 for (var i = 1; i < 100; i++) {
