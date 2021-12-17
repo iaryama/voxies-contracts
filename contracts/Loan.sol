@@ -25,7 +25,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
 
     address public treasury;
 
-    uint8 public contractFeePercent;
+    uint256 public contractFeePercent;
 
     uint256 public maxLoanPeriod = 604800;
 
@@ -127,8 +127,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
      *
      * @param _percent - Contract fee percentage to be set
      */
-    function updateContractFeePercent(uint8 _percent) external onlyAdmin {
-        require(_percent <= 100, "percentage cannot be greater than 100");
+    function updateContractFeePercent(uint256 _percent) external onlyAdmin {
         contractFeePercent = _percent;
     }
 
@@ -355,7 +354,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
         loanItems[_loanId].claimer = offer.claimer ? NFTRewardsClaimer.loaner : NFTRewardsClaimer.loanee;
         if (loanItems[_loanId].upfrontFee != 0) {
             if (treasury != address(0) && contractFeePercent != 0) {
-                uint256 contractFee = (loanItems[_loanId].upfrontFee * contractFeePercent) / 100;
+                uint256 contractFee = ((loanItems[_loanId].upfrontFee * contractFeePercent) / 100) / 100;
                 token.transferFrom(offer.loanee, treasury, contractFee);
                 token.transferFrom(offer.loanee, loanItems[_loanId].owner, loanItems[_loanId].upfrontFee - contractFee);
             } else {
@@ -384,7 +383,7 @@ contract Loan is AccessProtected, ReentrancyGuard, BaseRelayRecipient, IERC721Re
         loanItems[_loanId].startingTime = block.timestamp;
         if (loanItems[_loanId].upfrontFee != 0) {
             if (treasury != address(0) && contractFeePercent != 0) {
-                uint256 contractFee = (loanItems[_loanId].upfrontFee * contractFeePercent) / 100;
+                uint256 contractFee = ((loanItems[_loanId].upfrontFee * contractFeePercent) / 100) / 100;
                 token.transferFrom(sender, treasury, contractFee);
                 token.transferFrom(sender, loanItems[_loanId].owner, loanItems[_loanId].upfrontFee - contractFee);
             } else {
